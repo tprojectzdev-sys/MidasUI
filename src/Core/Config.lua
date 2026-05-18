@@ -198,6 +198,7 @@ function Config:Load(library, profile)
 			local size = decoded.Window.Size
 			if typeof(size) == "table" and tonumber(size.X) and tonumber(size.Y) then
 				window.Main.Size = UDim2.fromOffset(size.X, size.Y)
+				window._restoreSize = window.Main.Size
 			end
 
 			if decoded.Window.Minimized == true then

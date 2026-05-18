@@ -20,12 +20,13 @@ function Section.new(context, tab, name)
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundColor3 = theme.Card,
+		ClipsDescendants = false,
 		Parent = tab.Page,
 	})
 	utility:Corner(frame, 10)
 	utility:Stroke(frame, theme.Stroke, 0.3)
 	utility:Padding(frame, { X = 12, Y = 12 })
-	utility:List(frame, 8)
+	local layout = utility:List(frame, 8)
 
 	local title = utility:Create("TextLabel", {
 		Name = "Title",
@@ -41,6 +42,7 @@ function Section.new(context, tab, name)
 
 	self.Frame = frame
 	self.TitleLabel = title
+	self.Layout = layout
 	self._themeObjects = {
 		{ frame, "BackgroundColor3", "Card" },
 		{ title, "TextColor3", "Text" },
@@ -114,6 +116,20 @@ function Section:SetTheme(theme)
 		if element.SetTheme then
 			element:SetTheme(theme)
 		end
+	end
+end
+
+function Section:Destroy()
+	for _, element in ipairs(self.Elements) do
+		if element.Destroy then
+			element:Destroy()
+		end
+	end
+
+	table.clear(self.Elements)
+
+	if self.Frame then
+		self.Frame:Destroy()
 	end
 end
 

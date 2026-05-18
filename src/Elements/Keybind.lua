@@ -69,6 +69,7 @@ function Keybind.new(context, section, options)
 		Text = self.Name,
 		TextColor3 = theme.Text,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = row,
 	})

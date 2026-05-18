@@ -46,6 +46,7 @@ function Slider.new(context, section, options)
 		Text = self.Name,
 		TextColor3 = theme.Text,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
 	})
@@ -73,6 +74,7 @@ function Slider.new(context, section, options)
 		Parent = frame,
 	})
 	utility:Corner(bar, 6)
+	utility:Stroke(bar, theme.Stroke, 0.55)
 
 	local fill = utility:Create("Frame", {
 		Name = "Fill",
@@ -91,6 +93,7 @@ function Slider.new(context, section, options)
 		Parent = bar,
 	})
 	utility:Corner(knob, 8)
+	utility:Stroke(knob, theme.Stroke, 0.1)
 
 	self.Instance = frame
 	self.Label = label
@@ -124,6 +127,22 @@ function Slider.new(context, section, options)
 		end
 	end)
 
+	utility:Connect(self.Connections, bar.MouseEnter, function()
+		if self.Enabled == false then
+			return
+		end
+
+		utility:Tween(knob, 0.12, { Size = UDim2.fromOffset(18, 18) })
+	end)
+
+	utility:Connect(self.Connections, bar.MouseLeave, function()
+		if self.Enabled == false or self.Dragging then
+			return
+		end
+
+		utility:Tween(knob, 0.12, { Size = UDim2.fromOffset(16, 16) })
+	end)
+
 	utility:Connect(self.Connections, UserInputService.InputChanged, function(input)
 		if not self.Dragging then
 			return
@@ -137,6 +156,7 @@ function Slider.new(context, section, options)
 	utility:Connect(self.Connections, UserInputService.InputEnded, function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			self.Dragging = false
+			utility:Tween(knob, 0.12, { Size = UDim2.fromOffset(16, 16) })
 		end
 	end)
 
@@ -180,6 +200,7 @@ function Slider:SetEnabled(enabled)
 
 	if not self.Enabled then
 		self.Dragging = false
+		self.Utility:Tween(self.Knob, 0.12, { Size = UDim2.fromOffset(16, 16) })
 	end
 end
 

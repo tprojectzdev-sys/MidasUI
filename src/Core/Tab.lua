@@ -59,20 +59,25 @@ function Tab.new(context, window, options)
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ScrollBarThickness = 3,
+		ClipsDescendants = true,
+		ScrollBarThickness = 4,
 		ScrollBarImageColor3 = theme.Accent,
+		ScrollBarImageTransparency = 0.25,
 		CanvasSize = UDim2.fromOffset(0, 0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		AutomaticCanvasSize = Enum.AutomaticSize.None,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
 		Visible = false,
 		Parent = window.Content,
 	})
 	utility:Padding(page, { X = 14, Y = 14 })
-	utility:List(page, 10)
+	local pageList = utility:List(page, 10)
 
 	self.Button = button
 	self.IconLabel = icon
 	self.Label = label
 	self.Page = page
+	self.PageList = pageList
+	self.CanvasConnection = utility:BindCanvas(page, pageList, 28)
 	self._themeObjects = {
 		{ button, "BackgroundColor3", "Card" },
 		{ icon, "TextColor3", "MutedText" },
@@ -114,6 +119,29 @@ function Tab:SetTheme(theme)
 
 	for _, section in ipairs(self.Sections) do
 		section:SetTheme(theme)
+	end
+end
+
+function Tab:Destroy()
+	self.Utility:DisconnectAll(self.Connections)
+
+	if self.CanvasConnection then
+		self.CanvasConnection:Disconnect()
+		self.CanvasConnection = nil
+	end
+
+	for _, section in ipairs(self.Sections) do
+		if section.Destroy then
+			section:Destroy()
+		end
+	end
+
+	if self.Page then
+		self.Page:Destroy()
+	end
+
+	if self.Button then
+		self.Button:Destroy()
 	end
 end
 

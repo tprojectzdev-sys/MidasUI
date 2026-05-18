@@ -25,6 +25,7 @@ function Button.new(context, section, options)
 		Text = self.Name,
 		TextColor3 = theme.Text,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		AutoButtonColor = false,
 		Parent = section.Frame,
 	})
@@ -56,6 +57,20 @@ function Button.new(context, section, options)
 			return
 		end
 		task.spawn(self.Callback)
+	end)
+
+	utility:Connect(self.Connections, button.MouseButton1Down, function()
+		if self.Enabled == false then
+			return
+		end
+		utility:Tween(button, 0.08, { BackgroundTransparency = 0.18 })
+	end)
+
+	utility:Connect(self.Connections, button.MouseButton1Up, function()
+		if self.Enabled == false then
+			return
+		end
+		utility:Tween(button, 0.1, { BackgroundTransparency = 0 })
 	end)
 
 	self.Library:_BindElement(self, options)

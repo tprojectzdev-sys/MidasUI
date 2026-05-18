@@ -104,6 +104,10 @@ function Utility:Connect(store, signal, callback)
 end
 
 function Utility:DisconnectAll(store)
+	if not store then
+		return
+	end
+
 	for _, connection in ipairs(store) do
 		if connection and connection.Disconnect then
 			connection:Disconnect()
@@ -112,7 +116,57 @@ function Utility:DisconnectAll(store)
 	table.clear(store)
 end
 
-function Utility:MakeDraggable(handle, target, connections)
+function Utility:BindCanvas(scrollingFrame, layout, padding)
+	padding = padding or 0
+
+	local function update()
+		if not scrollingFrame.Parent then
+			return
+		end
+
+		local height = layout.AbsoluteContentSize.Y + padding
+		scrollingFrame.CanvasSize = UDim2.fromOffset(0, height)
+	end
+
+	update()
+	return layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(update)
+end
+
+function Utility:ClampToViewport(frame, margin)
+	margin = margin or 12
+
+	local camera = workspace.CurrentCamera
+	if not camera or not frame or not frame.Parent then
+		return
+	end
+
+	local viewport = camera.ViewportSize
+	local size = frame.AbsoluteSize
+	local position = frame.AbsolutePosition
+
+	local x = position.X
+	local y = position.Y
+
+	if x < margin then
+		x = margin
+	elseif x + size.X > viewport.X - margin then
+		x = math.max(margin, viewport.X - size.X - margin)
+	end
+
+	if y < margin then
+		y = margin
+	elseif y + size.Y > viewport.Y - margin then
+		y = math.max(margin, viewport.Y - size.Y - margin)
+	end
+
+	frame.Position = UDim2.fromOffset(
+		x + (size.X * frame.AnchorPoint.X),
+		y + (size.Y * frame.AnchorPoint.Y)
+	)
+end
+
+function Utility:MakeDraggable(handle, target, connections, options)
+	options = options or {}
 	local dragging = false
 	local dragStart
 	local startPosition
@@ -143,6 +197,10 @@ function Utility:MakeDraggable(handle, target, connections)
 			startPosition.Y.Scale,
 			startPosition.Y.Offset + delta.Y
 		)
+
+		if options.ClampToViewport then
+			self:ClampToViewport(target)
+		end
 	end)
 
 	self:Connect(connections, UserInputService.InputEnded, function(input)

@@ -2,31 +2,30 @@ local MidasUI = loadstring(game:HttpGet("URL_HERE"))()
 
 local Window = MidasUI:CreateWindow({
 	Title = "Midas",
-	Subtitle = "Minimal Example",
+	Subtitle = "V1.3 Basic Example",
 	Icon = "crown",
 	Theme = "DarkGold",
 	Size = UDim2.fromOffset(620, 460),
 	SaveConfig = true,
-	ConfigFolder = "Midas",
+	ConfigFolder = "MidasExample",
 })
 
-local MainTab = Window:CreateTab({
+local Main = Window:CreateTab({
 	Name = "Main",
 	Icon = "home",
 })
 
-local General = MainTab:CreateSection("General")
+local General = Main:CreateSection("General")
 
-General:CreateParagraph("A small MidasUI setup with the core V1.2 controls.")
+General:CreateParagraph("MidasUI V1.3 keeps the beginner flow small while the framework handles layout, scrolling, config, and cleanup.")
 
 General:CreateButton({
-	Name = "Say Hello",
-	Tooltip = "Runs a simple callback and shows a notification.",
+	Name = "Notify",
+	Tooltip = "Shows a small themed notification.",
 	Callback = function()
-		print("Hello from MidasUI")
 		MidasUI:Notify({
 			Title = "Midas",
-			Content = "Hello from MidasUI.",
+			Content = "Hello from MidasUI V1.3.",
 			Duration = 3,
 		})
 	end,
@@ -36,21 +35,21 @@ General:CreateToggle({
 	Name = "Enabled",
 	Flag = "enabled",
 	Default = false,
-	Tooltip = "This value is stored in MidasUI.Flags.enabled.",
+	Tooltip = "Saved in MidasUI.Flags.enabled.",
 	Callback = function(value)
 		print("Enabled:", value)
 	end,
 })
 
 General:CreateSlider({
-	Name = "Speed",
-	Flag = "speed",
+	Name = "Volume",
+	Flag = "volume",
 	Min = 0,
 	Max = 100,
-	Default = 16,
-	Increment = 1,
+	Default = 35,
+	Increment = 5,
 	Callback = function(value)
-		print("Speed:", value)
+		print("Volume:", value)
 	end,
 })
 
@@ -65,26 +64,17 @@ General:CreateDropdown({
 })
 
 General:CreateInput({
-	Name = "Username",
-	Flag = "username",
-	Placeholder = "Enter name...",
-	Default = "",
-	Callback = function(value)
-		print("Username:", value)
-	end,
+	Name = "Name",
+	Flag = "player_name",
+	Placeholder = "Type a name...",
 })
 
 General:CreateKeybind({
-	Name = "Toggle UI Key",
-	Flag = "toggle_ui_key",
-	Default = Enum.KeyCode.RightControl,
+	Name = "Action Key",
+	Flag = "action_key",
+	Default = Enum.KeyCode.F,
+	Mode = "Toggle",
 	Callback = function(keyCode)
-		print("Keybind pressed:", keyCode)
+		print("Action key:", keyCode)
 	end,
-})
-
-MidasUI:Notify({
-	Title = "Midas",
-	Content = "Loaded successfully.",
-	Duration = 5,
 })

@@ -36,6 +36,7 @@ function Toggle.new(context, section, options)
 		Text = self.Name,
 		TextColor3 = theme.Text,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = row,
 	})
@@ -80,6 +81,22 @@ function Toggle.new(context, section, options)
 		end
 	end)
 
+	utility:Connect(self.Connections, row.MouseEnter, function()
+		if self.Enabled == false then
+			return
+		end
+
+		utility:Tween(label, 0.12, { TextColor3 = self.Theme.Accent })
+	end)
+
+	utility:Connect(self.Connections, row.MouseLeave, function()
+		if self.Enabled == false then
+			return
+		end
+
+		utility:Tween(label, 0.12, { TextColor3 = self.Theme.Text })
+	end)
+
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
 	self.Library:_BindElement(self, options)
@@ -117,6 +134,7 @@ end
 function Toggle:SetEnabled(enabled)
 	self.Enabled = enabled == true
 	self.Label.TextTransparency = self.Enabled and 0 or 0.45
+	self.Label.TextColor3 = self.Enabled and self.Theme.Text or self.Theme.MutedText
 	self.Track.BackgroundTransparency = self.Enabled and 0 or 0.35
 	self.Knob.BackgroundTransparency = self.Enabled and 0 or 0.35
 end

@@ -18,6 +18,7 @@ function Window.new(context, options)
 		Subtitle = options.Subtitle or "",
 		Icon = options.Icon or "crown",
 		SaveConfig = options.SaveConfig == true,
+		Resizeable = options.Resizeable ~= false,
 	}, Window)
 
 	local library = self.Library
@@ -49,6 +50,11 @@ function Window.new(context, options)
 	})
 	utility:Corner(main, 12)
 	utility:Stroke(main, theme.Stroke, 0.15)
+	utility:Create("UISizeConstraint", {
+		MinSize = Vector2.new(420, 320),
+		MaxSize = Vector2.new(980, 720),
+		Parent = main,
+	})
 
 	local topbar = utility:Create("Frame", {
 		Name = "Topbar",
@@ -79,6 +85,7 @@ function Window.new(context, options)
 		Text = self.Title,
 		TextColor3 = theme.Text,
 		TextSize = 16,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = topbar,
 	})
@@ -92,6 +99,7 @@ function Window.new(context, options)
 		Text = self.Subtitle,
 		TextColor3 = theme.MutedText,
 		TextSize = 12,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = topbar,
 	})
@@ -148,6 +156,22 @@ function Window.new(context, options)
 		Position = UDim2.fromOffset(152, 56),
 		Size = UDim2.new(1, -152, 1, -56),
 		BackgroundTransparency = 1,
+		ClipsDescendants = true,
+		Parent = main,
+	})
+
+	local resize = utility:Create("TextButton", {
+		Name = "Resize",
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -6, 1, -6),
+		Size = UDim2.fromOffset(18, 18),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = "+",
+		TextColor3 = theme.MutedText,
+		TextSize = 12,
+		AutoButtonColor = false,
+		Visible = self.Resizeable,
 		Parent = main,
 	})
 
@@ -157,6 +181,8 @@ function Window.new(context, options)
 	self.Sidebar = sidebar
 	self.TabList = tabList
 	self.Content = content
+	self.ResizeButton = resize
+	self._restoreSize = size
 	self._themeObjects = {
 		{ main, "BackgroundColor3", "Background" },
 		{ topbar, "BackgroundColor3", "Topbar" },
@@ -168,9 +194,56 @@ function Window.new(context, options)
 		{ minimize, "TextColor3", "MutedText" },
 		{ close, "BackgroundColor3", "Card" },
 		{ close, "TextColor3", "Danger" },
+		{ resize, "TextColor3", "MutedText" },
 	}
 
-	utility:MakeDraggable(topbar, main, self.Connections)
+	utility:MakeDraggable(topbar, main, self.Connections, { ClampToViewport = true })
+
+	local resizing = false
+	local resizeStart
+	local startSize
+
+	utility:Connect(self.Connections, resize.InputBegan, function(input)
+		if not self.Resizeable or self.Minimized then
+			return
+		end
+
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			resizing = true
+			resizeStart = input.Position
+			startSize = main.AbsoluteSize
+		end
+	end)
+
+	utility:Connect(self.Connections, game:GetService("UserInputService").InputChanged, function(input)
+		if not resizing then
+			return
+		end
+
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+
+		local delta = input.Position - resizeStart
+		local width = math.clamp(startSize.X + delta.X, 420, 980)
+		local height = math.clamp(startSize.Y + delta.Y, 320, 720)
+		main.Size = UDim2.fromOffset(width, height)
+		self._restoreSize = main.Size
+		library._windowSettings.Size = { X = width, Y = height }
+	end)
+
+	utility:Connect(self.Connections, game:GetService("UserInputService").InputEnded, function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			resizing = false
+		end
+	end)
+
+	local camera = workspace.CurrentCamera
+	if camera then
+		utility:Connect(self.Connections, camera:GetPropertyChangedSignal("ViewportSize"), function()
+			utility:ClampToViewport(main)
+		end)
+	end
 
 	utility:Connect(self.Connections, minimize.MouseButton1Click, function()
 		self:SetMinimized(not self.Minimized)
@@ -179,6 +252,16 @@ function Window.new(context, options)
 	utility:Connect(self.Connections, close.MouseButton1Click, function()
 		self:Destroy()
 	end)
+
+	for _, button in ipairs({ minimize, close }) do
+		utility:Connect(self.Connections, button.MouseEnter, function()
+			utility:Tween(button, 0.12, { BackgroundColor3 = self.Theme.Background })
+		end)
+
+		utility:Connect(self.Connections, button.MouseLeave, function()
+			utility:Tween(button, 0.12, { BackgroundColor3 = self.Theme.Card })
+		end)
+	end
 
 	table.insert(library._windows, self)
 
@@ -213,7 +296,7 @@ function Window:SetMinimized(value)
 	self.Minimized = value == true
 	self.Library._windowSettings.Minimized = self.Minimized
 
-	local targetSize = self.Minimized and UDim2.fromOffset(self.Main.AbsoluteSize.X, 56) or (self.Library._windowSettings.Size or self.Main.Size)
+	local targetSize = self.Minimized and UDim2.fromOffset(self.Main.AbsoluteSize.X, 56) or self.Main.Size
 	if not self.Minimized then
 		targetSize = self._restoreSize or targetSize
 	else
@@ -223,6 +306,7 @@ function Window:SetMinimized(value)
 	self.Utility:Tween(self.Main, 0.22, { Size = targetSize })
 	self.Sidebar.Visible = not self.Minimized
 	self.Content.Visible = not self.Minimized
+	self.ResizeButton.Visible = self.Resizeable and not self.Minimized
 end
 
 function Window:SetTheme(theme)
@@ -256,14 +340,11 @@ function Window:Destroy()
 	end
 
 	for _, tab in ipairs(self.Tabs) do
-		for _, section in ipairs(tab.Sections) do
-			for _, element in ipairs(section.Elements) do
-				if element.Destroy then
-					element:Destroy()
-				end
-			end
+		if tab.Destroy then
+			tab:Destroy()
 		end
 	end
+	table.clear(self.Tabs)
 
 	self.Utility:DisconnectAll(self.Connections)
 
@@ -271,6 +352,10 @@ function Window:Destroy()
 		if self.Library._windows[index] == self then
 			table.remove(self.Library._windows, index)
 		end
+	end
+
+	if #self.Library._windows == 0 and self.Library._CleanupWindowRuntime then
+		self.Library:_CleanupWindowRuntime()
 	end
 
 	if self.Gui then

@@ -35,6 +35,7 @@ function Input.new(context, section, options)
 		Text = self.Name,
 		TextColor3 = theme.Text,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
 	})
@@ -74,6 +75,18 @@ function Input.new(context, section, options)
 		end
 	end)
 
+	utility:Connect(self.Connections, box.Focused, function()
+		if self.Enabled == false then
+			return
+		end
+
+		utility:Tween(box, 0.12, { BackgroundColor3 = self.Theme.Topbar })
+	end)
+
+	utility:Connect(self.Connections, box.FocusLost, function()
+		utility:Tween(box, 0.12, { BackgroundColor3 = self.Theme.Background })
+	end)
+
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
 	self.Library:_BindElement(self, options)
@@ -107,6 +120,7 @@ function Input:SetEnabled(enabled)
 	self.Enabled = enabled == true
 	self.Box.TextEditable = self.Enabled
 	self.Label.TextTransparency = self.Enabled and 0 or 0.45
+	self.Label.TextColor3 = self.Enabled and self.Theme.Text or self.Theme.MutedText
 	self.Box.TextTransparency = self.Enabled and 0 or 0.45
 	self.Box.BackgroundTransparency = self.Enabled and 0 or 0.35
 end

@@ -16,6 +16,7 @@ function Dropdown.new(context, section, options)
 		Connections = {},
 		Expanded = false,
 		Enabled = true,
+		MaxVisibleOptions = tonumber(options.MaxVisibleOptions) or 5,
 	}, Dropdown)
 
 	if self.Value == nil and self.Options[1] ~= nil then
@@ -27,8 +28,7 @@ function Dropdown.new(context, section, options)
 
 	local frame = utility:Create("Frame", {
 		Name = self.Name,
-		Size = UDim2.new(1, 0, 0, 40),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 58),
 		BackgroundTransparency = 1,
 		Parent = section.Frame,
 	})
@@ -94,7 +94,22 @@ function Dropdown.new(context, section, options)
 	utility:Corner(list, 8)
 	utility:Stroke(list, theme.Stroke, 0.5)
 	utility:Padding(list, { All = 4 })
-	utility:List(list, 4)
+
+	local scroll = utility:Create("ScrollingFrame", {
+		Name = "Options",
+		Size = UDim2.new(1, -8, 1, -8),
+		Position = UDim2.fromOffset(4, 4),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		CanvasSize = UDim2.fromOffset(0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.None,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		ScrollBarThickness = 3,
+		ScrollBarImageColor3 = theme.Accent,
+		ScrollBarImageTransparency = 0.3,
+		Parent = list,
+	})
+	local optionLayout = utility:List(scroll, 4)
 
 	self.Instance = frame
 	self.Label = label
@@ -102,6 +117,9 @@ function Dropdown.new(context, section, options)
 	self.ValueLabel = valueLabel
 	self.Arrow = arrow
 	self.List = list
+	self.Scroll = scroll
+	self.OptionLayout = optionLayout
+	self.CanvasConnection = utility:BindCanvas(scroll, optionLayout, 4)
 	self.OptionButtons = {}
 
 	for _, option in ipairs(self.Options) do
@@ -138,10 +156,28 @@ function Dropdown:_addOption(option)
 		Text = text,
 		TextColor3 = theme.MutedText,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		AutoButtonColor = false,
-		Parent = self.List,
+		Parent = self.Scroll,
 	})
 	utility:Corner(button, 6)
+
+	self.Utility:Connect(self.Connections, button.MouseEnter, function()
+		if self.Enabled == false then
+			return
+		end
+
+		self.Utility:Tween(button, 0.12, { BackgroundTransparency = 0.25 })
+	end)
+
+	self.Utility:Connect(self.Connections, button.MouseLeave, function()
+		if self.Enabled == false then
+			return
+		end
+
+		local active = self.Value == option
+		self.Utility:Tween(button, 0.12, { BackgroundTransparency = active and 0 or 1 })
+	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
 		if self.Enabled == false then
@@ -165,10 +201,13 @@ end
 
 function Dropdown:SetExpanded(value, instant)
 	self.Expanded = value == true
-	local height = self.Expanded and math.min(#self.Options * 32 + 8, 136) or 0
+	local maxVisible = math.max(self.MaxVisibleOptions, 1)
+	local height = self.Expanded and math.min(#self.Options, maxVisible) * 32 + 8 or 0
 	local frameHeight = self.Expanded and (64 + height) or 58
 
 	self.Arrow.Text = self.Expanded and "^" or "v"
+	self.Scroll.CanvasPosition = Vector2.new(0, 0)
+
 	if instant then
 		self.List.Size = UDim2.new(1, 0, 0, height)
 		self.Instance.Size = UDim2.new(1, 0, 0, frameHeight)
@@ -217,6 +256,7 @@ function Dropdown:SetTheme(theme)
 	self.ValueLabel.TextColor3 = theme.MutedText
 	self.Arrow.TextColor3 = theme.Accent
 	self.List.BackgroundColor3 = theme.Background
+	self.Scroll.ScrollBarImageColor3 = theme.Accent
 
 	for _, item in ipairs(self.OptionButtons) do
 		item.Button.BackgroundColor3 = theme.Card
@@ -226,6 +266,11 @@ function Dropdown:SetTheme(theme)
 end
 
 function Dropdown:Destroy()
+	if self.CanvasConnection then
+		self.CanvasConnection:Disconnect()
+		self.CanvasConnection = nil
+	end
+
 	self.Utility:DisconnectAll(self.Connections)
 	self.Instance:Destroy()
 end

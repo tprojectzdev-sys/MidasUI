@@ -1,118 +1,124 @@
 local MidasUI = loadstring(game:HttpGet("URL_HERE"))()
 
 local Window = MidasUI:CreateWindow({
-	Title = "MidasUI",
-	Subtitle = "V1.2 Showcase",
+	Title = "MidasUI Professional Framework Showcase",
+	Subtitle = "V1.3 layout, scrolling, lifecycle, dependencies, and controls",
 	Icon = "crown",
 	Theme = "DarkGold",
-	Size = UDim2.fromOffset(680, 500),
+	Size = UDim2.fromOffset(720, 540),
 	SaveConfig = true,
 	ConfigFolder = "MidasShowcase",
 })
 
-local MainTab = Window:CreateTab({
-	Name = "Main",
-	Icon = "home",
+local Main = Window:CreateTab({ Name = "Main", Icon = "home" })
+local Stress = Main:CreateSection("Dense Controls")
+
+Stress:CreateParagraph({
+	Text = "This tab intentionally contains many controls to validate scrolling, spacing, text wrapping, dropdown behavior, and bottom-element access.",
+	Tooltip = "Scroll to the bottom and open dropdowns while the page is scrolled.",
 })
 
-local Controls = MainTab:CreateSection("Controls")
-
-Controls:CreateParagraph({
-	Text = "This showcase exercises the V1.2 foundation: flags, keybinds, tooltips, profiles, dependencies, and themes.",
-	Tooltip = "Paragraphs can have simple hover tooltips too.",
-})
-
-Controls:CreateButton({
-	Name = "Show Notification",
-	Tooltip = "Shows a simple tweened notification.",
+Stress:CreateButton({
+	Name = "Burst Notifications",
+	Tooltip = "Creates several stacked notifications with auto cleanup.",
 	Callback = function()
-		MidasUI:Notify({
-			Title = "MidasUI",
-			Content = "Notifications are available from anywhere through MidasUI:Notify().",
-			Duration = 4,
-		})
+		for index = 1, 4 do
+			MidasUI:Notify({
+				Title = "Notification " .. index,
+				Content = "Stacking check with clean auto-removal.",
+				Duration = 2 + index,
+			})
+		end
 	end,
 })
 
-Controls:CreateDivider({
-	Tooltip = "Dividers can participate in dependencies and tooltips when useful.",
-})
-
-Controls:CreateToggle({
-	Name = "Master Toggle",
-	Flag = "master_toggle",
+Stress:CreateToggle({
+	Name = "Master Dependency",
+	Flag = "master_dependency",
 	Default = false,
-	Tooltip = "Controls the dependent slider and button below.",
-	Callback = function(value)
-		print("Master toggle:", value)
-	end,
+	Tooltip = "Controls the visible and enabled dependency examples below.",
 })
 
-Controls:CreateSlider({
-	Name = "Dependent Slider",
-	Flag = "dependent_slider",
+Stress:CreateSlider({
+	Name = "Visible When Master Is On",
+	Flag = "dependent_visible_slider",
 	Min = 0,
 	Max = 100,
 	Default = 50,
-	Increment = 5,
-	Tooltip = "Visible only when Master Toggle is enabled.",
+	Increment = 1,
+	Tooltip = "This should not consume layout space while hidden.",
 	DependsOn = {
-		Flag = "master_toggle",
+		Flag = "master_dependency",
 		Value = true,
 		Mode = "Visible",
 	},
-	Callback = function(value)
-		print("Dependent slider:", value)
-	end,
 })
 
-Controls:CreateButton({
-	Name = "Enabled By Master",
-	Tooltip = "Disabled until Master Toggle is enabled.",
+Stress:CreateButton({
+	Name = "Enabled When Master Is On",
+	Tooltip = "Disabled state should block interaction and look muted.",
 	DependsOn = {
-		Flag = "master_toggle",
+		Flag = "master_dependency",
 		Value = true,
 		Mode = "Enabled",
 	},
 	Callback = function()
-		print("Master-dependent button clicked")
+		print("Dependent button clicked")
 	end,
 })
 
-local Inputs = MainTab:CreateSection("Inputs")
+Stress:CreateDivider()
 
-Inputs:CreateDropdown({
-	Name = "Mode",
-	Flag = "mode",
-	Options = { "Safe", "Normal", "Aggressive" },
-	Default = "Normal",
-	Tooltip = "Dropdown values are saved to the active profile.",
+local longOptions = {
+	"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot",
+	"Golf", "Hotel", "India", "Juliet", "Kilo", "Lima",
+	"Mike", "November", "Oscar", "Papa", "Quebec", "Romeo",
+}
+
+Stress:CreateDropdown({
+	Name = "Long Dropdown",
+	Flag = "long_dropdown",
+	Options = longOptions,
+	Default = "Alpha",
+	MaxVisibleOptions = 6,
+	Tooltip = "The dropdown has its own scrollbar and should not destroy page layout.",
 	Callback = function(value)
-		print("Mode:", value)
+		print("Long dropdown:", value)
 	end,
 })
+
+for index = 1, 12 do
+	Stress:CreateSlider({
+		Name = "Stress Slider " .. index,
+		Flag = "stress_slider_" .. index,
+		Min = 0,
+		Max = 100,
+		Default = index * 5,
+		Increment = 5,
+		Tooltip = "Dense scrolling slider #" .. index,
+	})
+end
+
+local InputTab = Window:CreateTab({ Name = "Input", Icon = "user" })
+local Inputs = InputTab:CreateSection("Inputs and Keybinds")
 
 Inputs:CreateInput({
-	Name = "Username",
-	Flag = "username",
-	Placeholder = "Enter name...",
-	Default = "",
-	Tooltip = "Keybinds will not fire while this TextBox is focused.",
-	Callback = function(value)
-		print("Username:", value)
-	end,
+	Name = "Typing Test",
+	Flag = "typing_test",
+	Placeholder = "Type here; keybinds should not fire while focused.",
+	Tooltip = "Use this to confirm focused TextBoxes suppress keybind callbacks.",
 })
 
 Inputs:CreateKeybind({
-	Name = "Toggle UI",
-	Flag = "toggle_ui_key",
-	Default = Enum.KeyCode.RightControl,
+	Name = "Toggle Key",
+	Flag = "toggle_key",
+	Default = Enum.KeyCode.F,
 	Mode = "Toggle",
-	Tooltip = "Click the bind box, then press a key. Escape cancels; Backspace clears.",
+	Tooltip = "Click, press a key to assign. Escape cancels, Backspace clears.",
 	Callback = function(keyCode)
-		print("Toggle key pressed:", keyCode)
+		print("Toggle key fired:", keyCode)
 		MidasUI:Notify({
-			Title = "Keybind",
+			Title = "Toggle Key",
 			Content = "Pressed " .. tostring(keyCode),
 			Duration = 2,
 		})
@@ -120,152 +126,119 @@ Inputs:CreateKeybind({
 })
 
 Inputs:CreateKeybind({
-	Name = "Hold Action",
-	Flag = "hold_action_key",
+	Name = "Hold Key",
+	Flag = "hold_key",
 	Default = Enum.KeyCode.LeftShift,
 	Mode = "Hold",
 	Tooltip = "Hold mode sends true on press and false on release.",
-	Callback = function(isHeld)
-		print("Hold action:", isHeld)
+	Callback = function(isHolding, keyCode)
+		print("Hold key:", isHolding, keyCode)
 	end,
 })
 
-local SettingsTab = Window:CreateTab({
-	Name = "Settings",
-	Icon = "settings",
+Inputs:CreateButton({
+	Name = "Set Toggle Key To X",
+	Callback = function()
+		MidasUI:SetFlag("toggle_key", Enum.KeyCode.X)
+	end,
 })
 
-local Themes = SettingsTab:CreateSection("Themes")
+Inputs:CreateButton({
+	Name = "Clear Toggle Key",
+	Callback = function()
+		MidasUI:SetFlag("toggle_key", nil)
+	end,
+})
 
-Themes:CreateDropdown({
+local Settings = Window:CreateTab({ Name = "Settings", Icon = "settings" })
+local ThemeSection = Settings:CreateSection("Theme")
+
+ThemeSection:CreateDropdown({
 	Name = "Theme",
-	Flag = "theme_name",
+	Flag = "theme",
 	Options = { "DarkGold", "Midnight", "BlackWhite" },
 	Default = "DarkGold",
-	Tooltip = "Themes update the window and controls without rebuilding the UI.",
 	Callback = function(themeName)
 		MidasUI:SetTheme(themeName)
 	end,
 })
 
-Themes:CreateButton({
-	Name = "Set Midnight",
-	Tooltip = "Uses MidasUI:SetTheme directly.",
+ThemeSection:CreateButton({
+	Name = "Set Master On",
+	Tooltip = "Tests dependency refresh through SetFlag.",
 	Callback = function()
-		MidasUI:SetTheme("Midnight")
-		MidasUI:SetFlag("theme_name", "Midnight", false)
+		MidasUI:SetFlag("master_dependency", true)
 	end,
 })
 
-Themes:CreateButton({
-	Name = "Set DarkGold",
+ThemeSection:CreateButton({
+	Name = "Set Master Off",
 	Callback = function()
-		MidasUI:SetTheme("DarkGold")
-		MidasUI:SetFlag("theme_name", "DarkGold", false)
+		MidasUI:SetFlag("master_dependency", false)
 	end,
 })
 
-local Profiles = SettingsTab:CreateSection("Config Profiles")
+local Profiles = Settings:CreateSection("Profiles")
 
 Profiles:CreateInput({
 	Name = "Profile Name",
 	Flag = "profile_name",
 	Placeholder = "default",
 	Default = "default",
-	Tooltip = "Profile names are sanitized before becoming JSON file names.",
 })
 
 Profiles:CreateButton({
 	Name = "Save Profile",
-	Tooltip = "Calls MidasUI:SaveConfig(profile).",
 	Callback = function()
 		local profile = MidasUI:GetFlag("profile_name") or "default"
 		local ok, err = MidasUI:SaveConfig(profile)
 		MidasUI:Notify({
 			Title = "Config",
-			Content = ok and ("Saved profile: " .. profile) or ("Save failed: " .. tostring(err)),
-			Duration = 4,
+			Content = ok and ("Saved " .. profile) or tostring(err),
+			Duration = 3,
 		})
 	end,
 })
 
 Profiles:CreateButton({
 	Name = "Load Profile",
-	Tooltip = "Calls MidasUI:LoadConfig(profile).",
 	Callback = function()
 		local profile = MidasUI:GetFlag("profile_name") or "default"
 		local ok, err = MidasUI:LoadConfig(profile)
 		MidasUI:Notify({
 			Title = "Config",
-			Content = ok and ("Loaded profile: " .. profile) or ("Load failed: " .. tostring(err)),
-			Duration = 4,
-		})
-	end,
-})
-
-Profiles:CreateButton({
-	Name = "Delete Profile",
-	Tooltip = "Calls MidasUI:DeleteConfig(profile).",
-	Callback = function()
-		local profile = MidasUI:GetFlag("profile_name") or "default"
-		local ok, err = MidasUI:DeleteConfig(profile)
-		MidasUI:Notify({
-			Title = "Config",
-			Content = ok and ("Deleted profile: " .. profile) or ("Delete failed: " .. tostring(err)),
-			Duration = 4,
+			Content = ok and ("Loaded " .. profile) or tostring(err),
+			Duration = 3,
 		})
 	end,
 })
 
 Profiles:CreateButton({
 	Name = "Print Profiles",
-	Tooltip = "Uses MidasUI:ListConfigs(). Returns an empty table if listfiles is unavailable.",
 	Callback = function()
 		print("Profiles:", table.concat(MidasUI:ListConfigs(), ", "))
 	end,
 })
 
-local DebugTab = Window:CreateTab({
-	Name = "Debug",
-	Icon = "info",
+local Bottom = Main:CreateSection("Bottom Reachability")
+
+Bottom:CreateParagraph({
+	Text = "If you can read this and interact with the button below after opening long dropdowns above, the page canvas is updating correctly.",
 })
 
-local Flags = DebugTab:CreateSection("Flags")
-
-Flags:CreateButton({
-	Name = "Set Master On",
-	Tooltip = "Tests visual updates through MidasUI:SetFlag.",
+Bottom:CreateButton({
+	Name = "Bottom Button",
 	Callback = function()
-		MidasUI:SetFlag("master_toggle", true)
-	end,
-})
-
-Flags:CreateButton({
-	Name = "Set Master Off",
-	Callback = function()
-		MidasUI:SetFlag("master_toggle", false)
-	end,
-})
-
-Flags:CreateButton({
-	Name = "Set Speed To 75",
-	Callback = function()
-		MidasUI:SetFlag("dependent_slider", 75)
-	end,
-})
-
-Flags:CreateButton({
-	Name = "Read Flags",
-	Callback = function()
-		print("master_toggle:", MidasUI:GetFlag("master_toggle"))
-		print("mode:", MidasUI:GetFlag("mode"))
-		print("username:", MidasUI:GetFlag("username"))
-		print("toggle_ui_key:", MidasUI:GetFlag("toggle_ui_key"))
+		MidasUI:Notify({
+			Title = "Bottom",
+			Content = "Bottom element is reachable.",
+			Duration = 2,
+		})
 	end,
 })
 
 MidasUI:Notify({
 	Title = "MidasUI",
-	Content = "V1.2 showcase loaded.",
-	Duration = 5,
+	Content = "V1.3 showcase loaded.",
+	Duration = 4,
 })

@@ -17,7 +17,7 @@ if Icons and Icons.Map then
 end
 
 local MidasUI = {
-	Version = "1.2.0",
+	Version = "1.3.0",
 	Flags = {},
 	Keybinds = {},
 	Themes = Theme.Registry,
@@ -139,10 +139,32 @@ function MidasUI:_ApplyDependency(record)
 		if element.SetEnabled then
 			element:SetEnabled(passes)
 		else
-			element.Instance.Visible = passes
+			self:_SetElementVisible(element, passes)
 		end
 	else
-		element.Instance.Visible = passes
+		self:_SetElementVisible(element, passes)
+	end
+end
+
+function MidasUI:_SetElementVisible(element, visible)
+	local instance = element.Instance
+	if not instance then
+		return
+	end
+
+	if visible then
+		instance.Visible = true
+		if element._midasOriginalSize then
+			instance.Size = element._midasOriginalSize
+		end
+	else
+		if element.SetExpanded then
+			element:SetExpanded(false, true)
+		end
+
+		element._midasOriginalSize = instance.Size
+		instance.Visible = false
+		instance.Size = UDim2.new(element._midasOriginalSize.X.Scale, element._midasOriginalSize.X.Offset, 0, 0)
 	end
 end
 
@@ -164,7 +186,9 @@ function MidasUI:SaveConfig(profile)
 end
 
 function MidasUI:LoadConfig(profile)
-	return Config:Load(self, profile)
+	local ok, err = Config:Load(self, profile)
+	self:_RefreshDependencies()
+	return ok, err
 end
 
 function MidasUI:DeleteConfig(profile)
@@ -177,6 +201,43 @@ end
 
 function MidasUI:Notify(options)
 	Notify:Show(Context, options or {})
+end
+
+function MidasUI:_CleanupOverlays()
+	if self._notifyGui then
+		self._notifyGui:Destroy()
+		self._notifyGui = nil
+		self._notifyHolder = nil
+		self._notifications = nil
+	end
+
+	if self._tooltipGui then
+		Tooltip:Hide(Context)
+		self._tooltipGui:Destroy()
+		self._tooltipGui = nil
+		self._tooltipFrame = nil
+		self._tooltipLabel = nil
+	end
+
+	if self._tooltipConnections then
+		Utility:DisconnectAll(self._tooltipConnections)
+	end
+end
+
+function MidasUI:_CleanupWindowRuntime()
+	self:_CleanupOverlays()
+
+	if self._listeningKeybind then
+		self._listeningKeybind = nil
+	end
+
+	table.clear(self.Keybinds)
+
+	if self._keybindConnections then
+		Utility:DisconnectAll(self._keybindConnections)
+	end
+
+	self._keybindsReady = false
 end
 
 function MidasUI:Destroy()
@@ -193,27 +254,7 @@ function MidasUI:Destroy()
 		self._listeningKeybind = nil
 	end
 
-	if self._notifyGui then
-		self._notifyGui:Destroy()
-		self._notifyGui = nil
-		self._notifyHolder = nil
-	end
-
-	if self._tooltipGui then
-		Tooltip:Hide(Context)
-		self._tooltipGui:Destroy()
-		self._tooltipGui = nil
-		self._tooltipFrame = nil
-		self._tooltipLabel = nil
-	end
-
-	if self._keybindConnections then
-		Utility:DisconnectAll(self._keybindConnections)
-	end
-
-	if self._tooltipConnections then
-		Utility:DisconnectAll(self._tooltipConnections)
-	end
+	self:_CleanupWindowRuntime()
 
 	self._keybindsReady = false
 end

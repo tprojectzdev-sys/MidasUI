@@ -1,4 +1,4 @@
--- MidasUI V1.2 single-file bundle
+-- MidasUI V1.3 single-file bundle
 -- Generated from src modules. Edit src/ first, then rebuild the bundle.
 local ModuleCache = {}
 local ModuleSources = {}
@@ -134,6 +134,10 @@ function Utility:Connect(store, signal, callback)
 end
 
 function Utility:DisconnectAll(store)
+	if not store then
+		return
+	end
+
 	for _, connection in ipairs(store) do
 		if connection and connection.Disconnect then
 			connection:Disconnect()
@@ -142,7 +146,57 @@ function Utility:DisconnectAll(store)
 	table.clear(store)
 end
 
-function Utility:MakeDraggable(handle, target, connections)
+function Utility:BindCanvas(scrollingFrame, layout, padding)
+	padding = padding or 0
+
+	local function update()
+		if not scrollingFrame.Parent then
+			return
+		end
+
+		local height = layout.AbsoluteContentSize.Y + padding
+		scrollingFrame.CanvasSize = UDim2.fromOffset(0, height)
+	end
+
+	update()
+	return layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(update)
+end
+
+function Utility:ClampToViewport(frame, margin)
+	margin = margin or 12
+
+	local camera = workspace.CurrentCamera
+	if not camera or not frame or not frame.Parent then
+		return
+	end
+
+	local viewport = camera.ViewportSize
+	local size = frame.AbsoluteSize
+	local position = frame.AbsolutePosition
+
+	local x = position.X
+	local y = position.Y
+
+	if x < margin then
+		x = margin
+	elseif x + size.X > viewport.X - margin then
+		x = math.max(margin, viewport.X - size.X - margin)
+	end
+
+	if y < margin then
+		y = margin
+	elseif y + size.Y > viewport.Y - margin then
+		y = math.max(margin, viewport.Y - size.Y - margin)
+	end
+
+	frame.Position = UDim2.fromOffset(
+		x + (size.X * frame.AnchorPoint.X),
+		y + (size.Y * frame.AnchorPoint.Y)
+	)
+end
+
+function Utility:MakeDraggable(handle, target, connections, options)
+	options = options or {}
 	local dragging = false
 	local dragStart
 	local startPosition
@@ -173,6 +227,10 @@ function Utility:MakeDraggable(handle, target, connections)
 			startPosition.Y.Scale,
 			startPosition.Y.Offset + delta.Y
 		)
+
+		if options.ClampToViewport then
+			self:ClampToViewport(target)
+		end
 	end)
 
 	self:Connect(connections, UserInputService.InputEnded, function(input)
@@ -501,6 +559,7 @@ function Config:Load(library, profile)
 			local size = decoded.Window.Size
 			if typeof(size) == "table" and tonumber(size.X) and tonumber(size.Y) then
 				window.Main.Size = UDim2.fromOffset(size.X, size.Y)
+				window._restoreSize = window.Main.Size
 			end
 
 			if decoded.Window.Minimized == true then
@@ -601,19 +660,30 @@ function Notify:Init(context)
 
 	library._notifyGui = gui
 	library._notifyHolder = holder
+	library._notifications = library._notifications or {}
 end
 
 function Notify:Show(context, options)
+	options = options or {}
 	self:Init(context)
 
 	local library = context.Library
 	local utility = context.Utility
 	local theme = library.Theme
-	local duration = tonumber(options.Duration) or 5
+	local duration = math.max(tonumber(options.Duration) or 5, 0.5)
+	local titleText = tostring(options.Title or "MidasUI")
+	local contentText = tostring(options.Content or "")
+
+	if #library._notifications >= 6 then
+		local oldest = table.remove(library._notifications, 1)
+		if oldest and oldest.Parent then
+			oldest:Destroy()
+		end
+	end
 
 	local frame = utility:Create("Frame", {
 		Name = "Notification",
-		Size = UDim2.new(1, 0, 0, 84),
+		Size = UDim2.new(1, 0, 0, 86),
 		BackgroundColor3 = theme.Card,
 		BackgroundTransparency = 0.04,
 		Position = UDim2.fromOffset(320, 0),
@@ -628,20 +698,21 @@ function Notify:Show(context, options)
 		Size = UDim2.new(1, 0, 0, 22),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamSemibold,
-		Text = tostring(options.Title or "MidasUI"),
+		Text = titleText,
 		TextColor3 = theme.Text,
 		TextSize = 14,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
 	})
 
-	utility:Create("TextLabel", {
+	local content = utility:Create("TextLabel", {
 		Name = "Content",
 		Position = UDim2.fromOffset(0, 28),
-		Size = UDim2.new(1, 0, 0, 34),
+		Size = UDim2.new(1, 0, 0, contentText == "" and 0 or 34),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
-		Text = tostring(options.Content or ""),
+		Text = contentText,
 		TextColor3 = theme.MutedText,
 		TextSize = 13,
 		TextWrapped = true,
@@ -660,12 +731,16 @@ function Notify:Show(context, options)
 	utility:Corner(accent, 4)
 
 	title.TextTransparency = 1
+	content.TextTransparency = 1
 	frame.BackgroundTransparency = 1
 	utility:Tween(frame, 0.22, {
 		Position = UDim2.fromOffset(0, 0),
 		BackgroundTransparency = 0.04,
 	})
 	utility:Tween(title, 0.22, { TextTransparency = 0 })
+	utility:Tween(content, 0.22, { TextTransparency = 0 })
+
+	table.insert(library._notifications, frame)
 
 	task.delay(duration, function()
 		if not frame.Parent then
@@ -677,6 +752,12 @@ function Notify:Show(context, options)
 			BackgroundTransparency = 1,
 		})
 		tween.Completed:Wait()
+		for index = #library._notifications, 1, -1 do
+			if library._notifications[index] == frame then
+				table.remove(library._notifications, index)
+				break
+			end
+		end
 		frame:Destroy()
 	end)
 end
@@ -993,6 +1074,7 @@ function Window.new(context, options)
 		Subtitle = options.Subtitle or "",
 		Icon = options.Icon or "crown",
 		SaveConfig = options.SaveConfig == true,
+		Resizeable = options.Resizeable ~= false,
 	}, Window)
 
 	local library = self.Library
@@ -1024,6 +1106,11 @@ function Window.new(context, options)
 	})
 	utility:Corner(main, 12)
 	utility:Stroke(main, theme.Stroke, 0.15)
+	utility:Create("UISizeConstraint", {
+		MinSize = Vector2.new(420, 320),
+		MaxSize = Vector2.new(980, 720),
+		Parent = main,
+	})
 
 	local topbar = utility:Create("Frame", {
 		Name = "Topbar",
@@ -1054,6 +1141,7 @@ function Window.new(context, options)
 		Text = self.Title,
 		TextColor3 = theme.Text,
 		TextSize = 16,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = topbar,
 	})
@@ -1067,6 +1155,7 @@ function Window.new(context, options)
 		Text = self.Subtitle,
 		TextColor3 = theme.MutedText,
 		TextSize = 12,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = topbar,
 	})
@@ -1123,6 +1212,22 @@ function Window.new(context, options)
 		Position = UDim2.fromOffset(152, 56),
 		Size = UDim2.new(1, -152, 1, -56),
 		BackgroundTransparency = 1,
+		ClipsDescendants = true,
+		Parent = main,
+	})
+
+	local resize = utility:Create("TextButton", {
+		Name = "Resize",
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -6, 1, -6),
+		Size = UDim2.fromOffset(18, 18),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = "+",
+		TextColor3 = theme.MutedText,
+		TextSize = 12,
+		AutoButtonColor = false,
+		Visible = self.Resizeable,
 		Parent = main,
 	})
 
@@ -1132,6 +1237,8 @@ function Window.new(context, options)
 	self.Sidebar = sidebar
 	self.TabList = tabList
 	self.Content = content
+	self.ResizeButton = resize
+	self._restoreSize = size
 	self._themeObjects = {
 		{ main, "BackgroundColor3", "Background" },
 		{ topbar, "BackgroundColor3", "Topbar" },
@@ -1143,9 +1250,56 @@ function Window.new(context, options)
 		{ minimize, "TextColor3", "MutedText" },
 		{ close, "BackgroundColor3", "Card" },
 		{ close, "TextColor3", "Danger" },
+		{ resize, "TextColor3", "MutedText" },
 	}
 
-	utility:MakeDraggable(topbar, main, self.Connections)
+	utility:MakeDraggable(topbar, main, self.Connections, { ClampToViewport = true })
+
+	local resizing = false
+	local resizeStart
+	local startSize
+
+	utility:Connect(self.Connections, resize.InputBegan, function(input)
+		if not self.Resizeable or self.Minimized then
+			return
+		end
+
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			resizing = true
+			resizeStart = input.Position
+			startSize = main.AbsoluteSize
+		end
+	end)
+
+	utility:Connect(self.Connections, game:GetService("UserInputService").InputChanged, function(input)
+		if not resizing then
+			return
+		end
+
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+
+		local delta = input.Position - resizeStart
+		local width = math.clamp(startSize.X + delta.X, 420, 980)
+		local height = math.clamp(startSize.Y + delta.Y, 320, 720)
+		main.Size = UDim2.fromOffset(width, height)
+		self._restoreSize = main.Size
+		library._windowSettings.Size = { X = width, Y = height }
+	end)
+
+	utility:Connect(self.Connections, game:GetService("UserInputService").InputEnded, function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			resizing = false
+		end
+	end)
+
+	local camera = workspace.CurrentCamera
+	if camera then
+		utility:Connect(self.Connections, camera:GetPropertyChangedSignal("ViewportSize"), function()
+			utility:ClampToViewport(main)
+		end)
+	end
 
 	utility:Connect(self.Connections, minimize.MouseButton1Click, function()
 		self:SetMinimized(not self.Minimized)
@@ -1154,6 +1308,16 @@ function Window.new(context, options)
 	utility:Connect(self.Connections, close.MouseButton1Click, function()
 		self:Destroy()
 	end)
+
+	for _, button in ipairs({ minimize, close }) do
+		utility:Connect(self.Connections, button.MouseEnter, function()
+			utility:Tween(button, 0.12, { BackgroundColor3 = self.Theme.Background })
+		end)
+
+		utility:Connect(self.Connections, button.MouseLeave, function()
+			utility:Tween(button, 0.12, { BackgroundColor3 = self.Theme.Card })
+		end)
+	end
 
 	table.insert(library._windows, self)
 
@@ -1188,7 +1352,7 @@ function Window:SetMinimized(value)
 	self.Minimized = value == true
 	self.Library._windowSettings.Minimized = self.Minimized
 
-	local targetSize = self.Minimized and UDim2.fromOffset(self.Main.AbsoluteSize.X, 56) or (self.Library._windowSettings.Size or self.Main.Size)
+	local targetSize = self.Minimized and UDim2.fromOffset(self.Main.AbsoluteSize.X, 56) or self.Main.Size
 	if not self.Minimized then
 		targetSize = self._restoreSize or targetSize
 	else
@@ -1198,6 +1362,7 @@ function Window:SetMinimized(value)
 	self.Utility:Tween(self.Main, 0.22, { Size = targetSize })
 	self.Sidebar.Visible = not self.Minimized
 	self.Content.Visible = not self.Minimized
+	self.ResizeButton.Visible = self.Resizeable and not self.Minimized
 end
 
 function Window:SetTheme(theme)
@@ -1231,14 +1396,11 @@ function Window:Destroy()
 	end
 
 	for _, tab in ipairs(self.Tabs) do
-		for _, section in ipairs(tab.Sections) do
-			for _, element in ipairs(section.Elements) do
-				if element.Destroy then
-					element:Destroy()
-				end
-			end
+		if tab.Destroy then
+			tab:Destroy()
 		end
 	end
+	table.clear(self.Tabs)
 
 	self.Utility:DisconnectAll(self.Connections)
 
@@ -1246,6 +1408,10 @@ function Window:Destroy()
 		if self.Library._windows[index] == self then
 			table.remove(self.Library._windows, index)
 		end
+	end
+
+	if #self.Library._windows == 0 and self.Library._CleanupWindowRuntime then
+		self.Library:_CleanupWindowRuntime()
 	end
 
 	if self.Gui then
@@ -1318,20 +1484,25 @@ function Tab.new(context, window, options)
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ScrollBarThickness = 3,
+		ClipsDescendants = true,
+		ScrollBarThickness = 4,
 		ScrollBarImageColor3 = theme.Accent,
+		ScrollBarImageTransparency = 0.25,
 		CanvasSize = UDim2.fromOffset(0, 0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		AutomaticCanvasSize = Enum.AutomaticSize.None,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
 		Visible = false,
 		Parent = window.Content,
 	})
 	utility:Padding(page, { X = 14, Y = 14 })
-	utility:List(page, 10)
+	local pageList = utility:List(page, 10)
 
 	self.Button = button
 	self.IconLabel = icon
 	self.Label = label
 	self.Page = page
+	self.PageList = pageList
+	self.CanvasConnection = utility:BindCanvas(page, pageList, 28)
 	self._themeObjects = {
 		{ button, "BackgroundColor3", "Card" },
 		{ icon, "TextColor3", "MutedText" },
@@ -1376,6 +1547,29 @@ function Tab:SetTheme(theme)
 	end
 end
 
+function Tab:Destroy()
+	self.Utility:DisconnectAll(self.Connections)
+
+	if self.CanvasConnection then
+		self.CanvasConnection:Disconnect()
+		self.CanvasConnection = nil
+	end
+
+	for _, section in ipairs(self.Sections) do
+		if section.Destroy then
+			section:Destroy()
+		end
+	end
+
+	if self.Page then
+		self.Page:Destroy()
+	end
+
+	if self.Button then
+		self.Button:Destroy()
+	end
+end
+
 return Tab
 
 end
@@ -1402,12 +1596,13 @@ function Section.new(context, tab, name)
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundColor3 = theme.Card,
+		ClipsDescendants = false,
 		Parent = tab.Page,
 	})
 	utility:Corner(frame, 10)
 	utility:Stroke(frame, theme.Stroke, 0.3)
 	utility:Padding(frame, { X = 12, Y = 12 })
-	utility:List(frame, 8)
+	local layout = utility:List(frame, 8)
 
 	local title = utility:Create("TextLabel", {
 		Name = "Title",
@@ -1423,6 +1618,7 @@ function Section.new(context, tab, name)
 
 	self.Frame = frame
 	self.TitleLabel = title
+	self.Layout = layout
 	self._themeObjects = {
 		{ frame, "BackgroundColor3", "Card" },
 		{ title, "TextColor3", "Text" },
@@ -1499,6 +1695,20 @@ function Section:SetTheme(theme)
 	end
 end
 
+function Section:Destroy()
+	for _, element in ipairs(self.Elements) do
+		if element.Destroy then
+			element:Destroy()
+		end
+	end
+
+	table.clear(self.Elements)
+
+	if self.Frame then
+		self.Frame:Destroy()
+	end
+end
+
 return Section
 
 end
@@ -1530,6 +1740,7 @@ function Button.new(context, section, options)
 		Text = self.Name,
 		TextColor3 = theme.Text,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		AutoButtonColor = false,
 		Parent = section.Frame,
 	})
@@ -1561,6 +1772,20 @@ function Button.new(context, section, options)
 			return
 		end
 		task.spawn(self.Callback)
+	end)
+
+	utility:Connect(self.Connections, button.MouseButton1Down, function()
+		if self.Enabled == false then
+			return
+		end
+		utility:Tween(button, 0.08, { BackgroundTransparency = 0.18 })
+	end)
+
+	utility:Connect(self.Connections, button.MouseButton1Up, function()
+		if self.Enabled == false then
+			return
+		end
+		utility:Tween(button, 0.1, { BackgroundTransparency = 0 })
 	end)
 
 	self.Library:_BindElement(self, options)
@@ -1629,6 +1854,7 @@ function Toggle.new(context, section, options)
 		Text = self.Name,
 		TextColor3 = theme.Text,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = row,
 	})
@@ -1673,6 +1899,22 @@ function Toggle.new(context, section, options)
 		end
 	end)
 
+	utility:Connect(self.Connections, row.MouseEnter, function()
+		if self.Enabled == false then
+			return
+		end
+
+		utility:Tween(label, 0.12, { TextColor3 = self.Theme.Accent })
+	end)
+
+	utility:Connect(self.Connections, row.MouseLeave, function()
+		if self.Enabled == false then
+			return
+		end
+
+		utility:Tween(label, 0.12, { TextColor3 = self.Theme.Text })
+	end)
+
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
 	self.Library:_BindElement(self, options)
@@ -1710,6 +1952,7 @@ end
 function Toggle:SetEnabled(enabled)
 	self.Enabled = enabled == true
 	self.Label.TextTransparency = self.Enabled and 0 or 0.45
+	self.Label.TextColor3 = self.Enabled and self.Theme.Text or self.Theme.MutedText
 	self.Track.BackgroundTransparency = self.Enabled and 0 or 0.35
 	self.Knob.BackgroundTransparency = self.Enabled and 0 or 0.35
 end
@@ -1780,6 +2023,7 @@ function Slider.new(context, section, options)
 		Text = self.Name,
 		TextColor3 = theme.Text,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
 	})
@@ -1807,6 +2051,7 @@ function Slider.new(context, section, options)
 		Parent = frame,
 	})
 	utility:Corner(bar, 6)
+	utility:Stroke(bar, theme.Stroke, 0.55)
 
 	local fill = utility:Create("Frame", {
 		Name = "Fill",
@@ -1825,6 +2070,7 @@ function Slider.new(context, section, options)
 		Parent = bar,
 	})
 	utility:Corner(knob, 8)
+	utility:Stroke(knob, theme.Stroke, 0.1)
 
 	self.Instance = frame
 	self.Label = label
@@ -1858,6 +2104,22 @@ function Slider.new(context, section, options)
 		end
 	end)
 
+	utility:Connect(self.Connections, bar.MouseEnter, function()
+		if self.Enabled == false then
+			return
+		end
+
+		utility:Tween(knob, 0.12, { Size = UDim2.fromOffset(18, 18) })
+	end)
+
+	utility:Connect(self.Connections, bar.MouseLeave, function()
+		if self.Enabled == false or self.Dragging then
+			return
+		end
+
+		utility:Tween(knob, 0.12, { Size = UDim2.fromOffset(16, 16) })
+	end)
+
 	utility:Connect(self.Connections, UserInputService.InputChanged, function(input)
 		if not self.Dragging then
 			return
@@ -1871,6 +2133,7 @@ function Slider.new(context, section, options)
 	utility:Connect(self.Connections, UserInputService.InputEnded, function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			self.Dragging = false
+			utility:Tween(knob, 0.12, { Size = UDim2.fromOffset(16, 16) })
 		end
 	end)
 
@@ -1914,6 +2177,7 @@ function Slider:SetEnabled(enabled)
 
 	if not self.Enabled then
 		self.Dragging = false
+		self.Utility:Tween(self.Knob, 0.12, { Size = UDim2.fromOffset(16, 16) })
 	end
 end
 
@@ -1953,6 +2217,7 @@ function Dropdown.new(context, section, options)
 		Connections = {},
 		Expanded = false,
 		Enabled = true,
+		MaxVisibleOptions = tonumber(options.MaxVisibleOptions) or 5,
 	}, Dropdown)
 
 	if self.Value == nil and self.Options[1] ~= nil then
@@ -1964,8 +2229,7 @@ function Dropdown.new(context, section, options)
 
 	local frame = utility:Create("Frame", {
 		Name = self.Name,
-		Size = UDim2.new(1, 0, 0, 40),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 58),
 		BackgroundTransparency = 1,
 		Parent = section.Frame,
 	})
@@ -2031,7 +2295,22 @@ function Dropdown.new(context, section, options)
 	utility:Corner(list, 8)
 	utility:Stroke(list, theme.Stroke, 0.5)
 	utility:Padding(list, { All = 4 })
-	utility:List(list, 4)
+
+	local scroll = utility:Create("ScrollingFrame", {
+		Name = "Options",
+		Size = UDim2.new(1, -8, 1, -8),
+		Position = UDim2.fromOffset(4, 4),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		CanvasSize = UDim2.fromOffset(0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.None,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		ScrollBarThickness = 3,
+		ScrollBarImageColor3 = theme.Accent,
+		ScrollBarImageTransparency = 0.3,
+		Parent = list,
+	})
+	local optionLayout = utility:List(scroll, 4)
 
 	self.Instance = frame
 	self.Label = label
@@ -2039,6 +2318,9 @@ function Dropdown.new(context, section, options)
 	self.ValueLabel = valueLabel
 	self.Arrow = arrow
 	self.List = list
+	self.Scroll = scroll
+	self.OptionLayout = optionLayout
+	self.CanvasConnection = utility:BindCanvas(scroll, optionLayout, 4)
 	self.OptionButtons = {}
 
 	for _, option in ipairs(self.Options) do
@@ -2075,10 +2357,28 @@ function Dropdown:_addOption(option)
 		Text = text,
 		TextColor3 = theme.MutedText,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		AutoButtonColor = false,
-		Parent = self.List,
+		Parent = self.Scroll,
 	})
 	utility:Corner(button, 6)
+
+	self.Utility:Connect(self.Connections, button.MouseEnter, function()
+		if self.Enabled == false then
+			return
+		end
+
+		self.Utility:Tween(button, 0.12, { BackgroundTransparency = 0.25 })
+	end)
+
+	self.Utility:Connect(self.Connections, button.MouseLeave, function()
+		if self.Enabled == false then
+			return
+		end
+
+		local active = self.Value == option
+		self.Utility:Tween(button, 0.12, { BackgroundTransparency = active and 0 or 1 })
+	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
 		if self.Enabled == false then
@@ -2102,10 +2402,13 @@ end
 
 function Dropdown:SetExpanded(value, instant)
 	self.Expanded = value == true
-	local height = self.Expanded and math.min(#self.Options * 32 + 8, 136) or 0
+	local maxVisible = math.max(self.MaxVisibleOptions, 1)
+	local height = self.Expanded and math.min(#self.Options, maxVisible) * 32 + 8 or 0
 	local frameHeight = self.Expanded and (64 + height) or 58
 
 	self.Arrow.Text = self.Expanded and "^" or "v"
+	self.Scroll.CanvasPosition = Vector2.new(0, 0)
+
 	if instant then
 		self.List.Size = UDim2.new(1, 0, 0, height)
 		self.Instance.Size = UDim2.new(1, 0, 0, frameHeight)
@@ -2154,6 +2457,7 @@ function Dropdown:SetTheme(theme)
 	self.ValueLabel.TextColor3 = theme.MutedText
 	self.Arrow.TextColor3 = theme.Accent
 	self.List.BackgroundColor3 = theme.Background
+	self.Scroll.ScrollBarImageColor3 = theme.Accent
 
 	for _, item in ipairs(self.OptionButtons) do
 		item.Button.BackgroundColor3 = theme.Card
@@ -2163,6 +2467,11 @@ function Dropdown:SetTheme(theme)
 end
 
 function Dropdown:Destroy()
+	if self.CanvasConnection then
+		self.CanvasConnection:Disconnect()
+		self.CanvasConnection = nil
+	end
+
 	self.Utility:DisconnectAll(self.Connections)
 	self.Instance:Destroy()
 end
@@ -2208,6 +2517,7 @@ function Input.new(context, section, options)
 		Text = self.Name,
 		TextColor3 = theme.Text,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
 	})
@@ -2247,6 +2557,18 @@ function Input.new(context, section, options)
 		end
 	end)
 
+	utility:Connect(self.Connections, box.Focused, function()
+		if self.Enabled == false then
+			return
+		end
+
+		utility:Tween(box, 0.12, { BackgroundColor3 = self.Theme.Topbar })
+	end)
+
+	utility:Connect(self.Connections, box.FocusLost, function()
+		utility:Tween(box, 0.12, { BackgroundColor3 = self.Theme.Background })
+	end)
+
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
 	self.Library:_BindElement(self, options)
@@ -2280,6 +2602,7 @@ function Input:SetEnabled(enabled)
 	self.Enabled = enabled == true
 	self.Box.TextEditable = self.Enabled
 	self.Label.TextTransparency = self.Enabled and 0 or 0.45
+	self.Label.TextColor3 = self.Enabled and self.Theme.Text or self.Theme.MutedText
 	self.Box.TextTransparency = self.Enabled and 0 or 0.45
 	self.Box.BackgroundTransparency = self.Enabled and 0 or 0.35
 end
@@ -2372,6 +2695,7 @@ function Keybind.new(context, section, options)
 		Text = self.Name,
 		TextColor3 = theme.Text,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = row,
 	})
@@ -2682,7 +3006,7 @@ if Icons and Icons.Map then
 end
 
 local MidasUI = {
-    Version = "1.2.0",
+    Version = "1.3.0",
     Flags = {},
     Keybinds = {},
     Themes = Theme.Registry,
@@ -2803,10 +3127,32 @@ function MidasUI:_ApplyDependency(record)
         if element.SetEnabled then
             element:SetEnabled(passes)
         else
-            element.Instance.Visible = passes
+            self:_SetElementVisible(element, passes)
         end
     else
-        element.Instance.Visible = passes
+        self:_SetElementVisible(element, passes)
+    end
+end
+
+function MidasUI:_SetElementVisible(element, visible)
+    local instance = element.Instance
+    if not instance then
+        return
+    end
+
+    if visible then
+        instance.Visible = true
+        if element._midasOriginalSize then
+            instance.Size = element._midasOriginalSize
+        end
+    else
+        if element.SetExpanded then
+            element:SetExpanded(false, true)
+        end
+
+        element._midasOriginalSize = instance.Size
+        instance.Visible = false
+        instance.Size = UDim2.new(element._midasOriginalSize.X.Scale, element._midasOriginalSize.X.Offset, 0, 0)
     end
 end
 
@@ -2828,7 +3174,9 @@ function MidasUI:SaveConfig(profile)
 end
 
 function MidasUI:LoadConfig(profile)
-    return Config:Load(self, profile)
+    local ok, err = Config:Load(self, profile)
+    self:_RefreshDependencies()
+    return ok, err
 end
 
 function MidasUI:DeleteConfig(profile)
@@ -2841,6 +3189,43 @@ end
 
 function MidasUI:Notify(options)
     Notify:Show(Context, options or {})
+end
+
+function MidasUI:_CleanupOverlays()
+    if self._notifyGui then
+        self._notifyGui:Destroy()
+        self._notifyGui = nil
+        self._notifyHolder = nil
+        self._notifications = nil
+    end
+
+    if self._tooltipGui then
+        Tooltip:Hide(Context)
+        self._tooltipGui:Destroy()
+        self._tooltipGui = nil
+        self._tooltipFrame = nil
+        self._tooltipLabel = nil
+    end
+
+    if self._tooltipConnections then
+        Utility:DisconnectAll(self._tooltipConnections)
+    end
+end
+
+function MidasUI:_CleanupWindowRuntime()
+    self:_CleanupOverlays()
+
+    if self._listeningKeybind then
+        self._listeningKeybind = nil
+    end
+
+    table.clear(self.Keybinds)
+
+    if self._keybindConnections then
+        Utility:DisconnectAll(self._keybindConnections)
+    end
+
+    self._keybindsReady = false
 end
 
 function MidasUI:Destroy()
@@ -2857,27 +3242,7 @@ function MidasUI:Destroy()
         self._listeningKeybind = nil
     end
 
-    if self._notifyGui then
-        self._notifyGui:Destroy()
-        self._notifyGui = nil
-        self._notifyHolder = nil
-    end
-
-    if self._tooltipGui then
-        Tooltip:Hide(Context)
-        self._tooltipGui:Destroy()
-        self._tooltipGui = nil
-        self._tooltipFrame = nil
-        self._tooltipLabel = nil
-    end
-
-    if self._keybindConnections then
-        Utility:DisconnectAll(self._keybindConnections)
-    end
-
-    if self._tooltipConnections then
-        Utility:DisconnectAll(self._tooltipConnections)
-    end
+    self:_CleanupWindowRuntime()
 
     self._keybindsReady = false
 end
