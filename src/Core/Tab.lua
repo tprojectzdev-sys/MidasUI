@@ -2,6 +2,7 @@ local Tab = {}
 Tab.__index = Tab
 
 function Tab.new(context, window, options)
+	options = typeof(options) == "table" and options or {}
 	local self = setmetatable({
 		Context = context,
 		Window = window,
@@ -92,19 +93,64 @@ function Tab.new(context, window, options)
 end
 
 function Tab:CreateSection(name)
+	if self.Destroyed then
+		self.Library:_Warn("CreateSection ignored: tab is destroyed")
+		return nil
+	end
+
 	local section = self.Context.Section.new(self.Context, self, name)
 	table.insert(self.Sections, section)
 	return section
 end
 
 function Tab:SetActive(active)
+	if self.Destroyed then
+		return
+	end
+
 	self.Page.Visible = active
 	self.Button.BackgroundTransparency = active and 0 or 1
 	self.IconLabel.TextColor3 = active and self.Theme.Accent or self.Theme.MutedText
 	self.Label.TextColor3 = active and self.Theme.Text or self.Theme.MutedText
 end
 
+function Tab:Show()
+	if self.Button then
+		self.Button.Visible = true
+	end
+	return self
+end
+
+function Tab:Hide()
+	if self.Button then
+		self.Button.Visible = false
+	end
+	if self.Window.ActiveTab == self then
+		self.Page.Visible = false
+	end
+	return self
+end
+
+function Tab:Rename(name)
+	self.Name = tostring(name or self.Name)
+	if self.Label then
+		self.Label.Text = self.Name
+	end
+	return self
+end
+
+function Tab:RefreshLayout()
+	if self.CanvasConnection and self.PageList then
+		self.Page.CanvasSize = UDim2.fromOffset(0, self.PageList.AbsoluteContentSize.Y + 28)
+	end
+	return self
+end
+
 function Tab:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	self.Page.ScrollBarImageColor3 = theme.Accent
 
@@ -120,9 +166,16 @@ function Tab:SetTheme(theme)
 	for _, section in ipairs(self.Sections) do
 		section:SetTheme(theme)
 	end
+
+	return self
 end
 
 function Tab:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
 	self.Utility:DisconnectAll(self.Connections)
 
 	if self.CanvasConnection then
@@ -130,7 +183,7 @@ function Tab:Destroy()
 		self.CanvasConnection = nil
 	end
 
-	for _, section in ipairs(self.Sections) do
+	for _, section in ipairs(table.clone(self.Sections)) do
 		if section.Destroy then
 			section:Destroy()
 		end
@@ -142,6 +195,12 @@ function Tab:Destroy()
 
 	if self.Button then
 		self.Button:Destroy()
+	end
+
+	for index = #self.Window.Tabs, 1, -1 do
+		if self.Window.Tabs[index] == self then
+			table.remove(self.Window.Tabs, index)
+		end
 	end
 end
 

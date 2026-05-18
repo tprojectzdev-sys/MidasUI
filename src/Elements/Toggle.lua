@@ -2,6 +2,7 @@ local Toggle = {}
 Toggle.__index = Toggle
 
 function Toggle.new(context, section, options)
+	options = options or {}
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -109,6 +110,10 @@ function Toggle:GetValue()
 end
 
 function Toggle:SetValue(value, fireCallback)
+	if self.Destroyed then
+		return self
+	end
+
 	local nextValue = value == true
 	local changed = self.Value ~= nextValue
 	self.Value = nextValue
@@ -129,28 +134,100 @@ function Toggle:SetValue(value, fireCallback)
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
 	end
+
+	return self
 end
 
 function Toggle:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Enabled = enabled == true
 	self.Label.TextTransparency = self.Enabled and 0 or 0.45
 	self.Label.TextColor3 = self.Enabled and self.Theme.Text or self.Theme.MutedText
 	self.Track.BackgroundTransparency = self.Enabled and 0 or 0.35
 	self.Knob.BackgroundTransparency = self.Enabled and 0 or 0.35
+	return self
+end
+
+function Toggle:Enable()
+	return self:SetEnabled(true)
+end
+
+function Toggle:Disable()
+	return self:SetEnabled(false)
+end
+
+function Toggle:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Toggle:Show()
+	return self:SetVisible(true)
+end
+
+function Toggle:Hide()
+	return self:SetVisible(false)
+end
+
+function Toggle:SetText(text)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(text or "")
+	self.Label.Text = self.Name
+	return self
+end
+
+function Toggle:SetCallback(callback)
+	self.Callback = typeof(callback) == "function" and callback or function() end
+	return self
+end
+
+function Toggle:Set(value, fireCallback)
+	return self:SetValue(value, fireCallback)
+end
+
+function Toggle:Refresh()
+	if not self.Destroyed then
+		self:SetValue(self.Value, false)
+		self:SetEnabled(self.Enabled)
+	end
+	return self
 end
 
 function Toggle:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	for _, binding in ipairs(self._themeObjects) do
 		local object, property, key = binding[1], binding[2], binding[3]
 		object[property] = theme[key]
 	end
 	self:SetValue(self.Value, false)
+	return self
 end
 
 function Toggle:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
+	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Toggle

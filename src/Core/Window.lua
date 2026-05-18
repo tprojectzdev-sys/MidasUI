@@ -2,6 +2,11 @@ local Window = {}
 Window.__index = Window
 
 function Window.new(context, options)
+	if options ~= nil and typeof(options) ~= "table" then
+		context.Library:_Warn("Window.new expected an options table")
+		options = {}
+	end
+
 	options = options or {}
 
 	local self = setmetatable({
@@ -178,6 +183,9 @@ function Window.new(context, options)
 	self.Gui = gui
 	self.Main = main
 	self.Topbar = topbar
+	self.TitleLabel = title
+	self.SubtitleLabel = subtitle
+	self.IconLabel = icon
 	self.Sidebar = sidebar
 	self.TabList = tabList
 	self.Content = content
@@ -273,6 +281,11 @@ function Window.new(context, options)
 end
 
 function Window:CreateTab(options)
+	if self.Closed then
+		self.Library:_Warn("CreateTab ignored: window is destroyed")
+		return nil
+	end
+
 	options = typeof(options) == "table" and options or { Name = tostring(options) }
 	local tab = self.Context.Tab.new(self.Context, self, options)
 	table.insert(self.Tabs, tab)
@@ -285,6 +298,24 @@ function Window:CreateTab(options)
 end
 
 function Window:SelectTab(tab)
+	if self.Closed then
+		return
+	end
+
+	if typeof(tab) == "string" then
+		for _, item in ipairs(self.Tabs) do
+			if item.Name == tab then
+				tab = item
+				break
+			end
+		end
+	end
+
+	if typeof(tab) ~= "table" or tab.Destroyed then
+		self.Library:_Warn("SelectTab ignored: invalid tab")
+		return
+	end
+
 	self.ActiveTab = tab
 
 	for _, item in ipairs(self.Tabs) do
@@ -310,6 +341,11 @@ function Window:SetMinimized(value)
 end
 
 function Window:SetTheme(theme)
+	if typeof(theme) == "string" then
+		self.Library:SetTheme(theme)
+		return self
+	end
+
 	self.Theme = theme
 
 	for _, binding in ipairs(self._themeObjects) do
@@ -319,9 +355,66 @@ function Window:SetTheme(theme)
 		end
 	end
 
+	self.Utility:ApplyStrokeTheme(self.Main, theme.Stroke)
+
 	for _, tab in ipairs(self.Tabs) do
 		tab:SetTheme(theme)
 	end
+
+	return self
+end
+
+function Window:Show()
+	if not self.Closed and self.Gui then
+		self.Gui.Enabled = true
+	end
+	return self
+end
+
+function Window:Hide()
+	if not self.Closed and self.Gui then
+		self.Gui.Enabled = false
+	end
+	return self
+end
+
+function Window:Minimize()
+	self:SetMinimized(true)
+	return self
+end
+
+function Window:Restore()
+	self:SetMinimized(false)
+	return self
+end
+
+function Window:Close()
+	self:Destroy()
+end
+
+function Window:SetTitle(titleText)
+	self.Title = tostring(titleText or "")
+	if self.TitleLabel then
+		self.TitleLabel.Text = self.Title
+	end
+	return self
+end
+
+function Window:SetSubtitle(subtitleText)
+	self.Subtitle = tostring(subtitleText or "")
+	if self.SubtitleLabel then
+		self.SubtitleLabel.Text = self.Subtitle
+	end
+	return self
+end
+
+function Window:Notify(options)
+	self.Library:Notify(options)
+	return self
+end
+
+function Window:Dialog(options)
+	return self.Library:Dialog(options)
 end
 
 function Window:Destroy()
@@ -330,6 +423,7 @@ function Window:Destroy()
 	end
 
 	self.Closed = true
+	self.Destroyed = true
 
 	if self.SaveConfig then
 		self.Library:SaveConfig()
@@ -339,7 +433,7 @@ function Window:Destroy()
 		self.Context.Tooltip:Hide(self.Context)
 	end
 
-	for _, tab in ipairs(self.Tabs) do
+	for _, tab in ipairs(table.clone(self.Tabs)) do
 		if tab.Destroy then
 			tab:Destroy()
 		end

@@ -1,52 +1,108 @@
 local MidasUI = loadstring(game:HttpGet("URL_HERE"))()
 
+MidasUI:SetDebug(true)
+
+MidasUI:RegisterTheme("ObsidianGold", {
+	Background = Color3.fromRGB(8, 8, 10),
+	Topbar = Color3.fromRGB(18, 17, 16),
+	Sidebar = Color3.fromRGB(13, 13, 15),
+	Card = Color3.fromRGB(22, 21, 20),
+	Accent = Color3.fromRGB(232, 192, 104),
+	Text = Color3.fromRGB(250, 245, 234),
+	MutedText = Color3.fromRGB(156, 149, 135),
+	Stroke = Color3.fromRGB(80, 66, 38),
+	Danger = Color3.fromRGB(230, 88, 88),
+})
+
 local Window = MidasUI:CreateWindow({
-	Title = "MidasUI Professional Framework Showcase",
-	Subtitle = "V1.3 layout, scrolling, lifecycle, dependencies, and controls",
+	Title = "MidasUI V1.4 Developer API Showcase",
+	Subtitle = "Controllers, dialogs, diagnostics, themes, runtime updates",
 	Icon = "crown",
 	Theme = "DarkGold",
-	Size = UDim2.fromOffset(720, 540),
+	Size = UDim2.fromOffset(740, 550),
 	SaveConfig = true,
 	ConfigFolder = "MidasShowcase",
 })
 
 local Main = Window:CreateTab({ Name = "Main", Icon = "home" })
-local Stress = Main:CreateSection("Dense Controls")
+local Controllers = Main:CreateSection("Controller API")
 
-Stress:CreateParagraph({
-	Text = "This tab intentionally contains many controls to validate scrolling, spacing, text wrapping, dropdown behavior, and bottom-element access.",
-	Tooltip = "Scroll to the bottom and open dropdowns while the page is scrolled.",
+local Status = Controllers:CreateParagraph({
+	Text = "Controller status: ready.",
+	Tooltip = "This paragraph is stored and updated through its controller.",
 })
 
-Stress:CreateButton({
-	Name = "Burst Notifications",
-	Tooltip = "Creates several stacked notifications with auto cleanup.",
+local MasterToggle = Controllers:CreateToggle({
+	Name = "Master Toggle",
+	Flag = "master_dependency",
+	Default = false,
+	Tooltip = "Drives dependency examples and SetFlag tests.",
+})
+
+local ControlledSlider = Controllers:CreateSlider({
+	Name = "Controlled Slider",
+	Flag = "controlled_slider",
+	Min = 0,
+	Max = 100,
+	Default = 45,
+	Increment = 5,
+	Tooltip = "Updated through SetFlag and the controller API.",
+})
+
+local DynamicDropdown = Controllers:CreateDropdown({
+	Name = "Dynamic Dropdown",
+	Flag = "dynamic_dropdown",
+	Options = { "Alpha", "Bravo", "Charlie" },
+	Default = "Alpha",
+	MaxVisibleOptions = 5,
+})
+
+Controllers:CreateButton({
+	Name = "Update Controllers",
+	Tooltip = "Updates text, slider value, dropdown options, and toggle state.",
 	Callback = function()
-		for index = 1, 4 do
-			MidasUI:Notify({
-				Title = "Notification " .. index,
-				Content = "Stacking check with clean auto-removal.",
-				Duration = 2 + index,
-			})
-		end
+		Status:SetText("Controller status: updated through public methods.")
+		ControlledSlider:Set(75)
+		DynamicDropdown:SetOptions({ "One", "Two", "Three", "Four", "Five", "Six" }, "Three")
+		MasterToggle:Set(true)
 	end,
 })
 
-Stress:CreateToggle({
-	Name = "Master Dependency",
-	Flag = "master_dependency",
-	Default = false,
-	Tooltip = "Controls the visible and enabled dependency examples below.",
+Controllers:CreateButton({
+	Name = "Hide Then Show Status",
+	Callback = function()
+		Status:Hide()
+		task.delay(1, function()
+			Status:Show()
+		end)
+	end,
 })
 
-Stress:CreateSlider({
+local Temporary = Controllers:CreateButton({
+	Name = "Temporary Destroy Target",
+	Callback = function()
+		print("Temporary button clicked")
+	end,
+})
+
+Controllers:CreateButton({
+	Name = "Destroy Temporary Button",
+	Tooltip = "Destroyed controllers should stop responding safely.",
+	Callback = function()
+		Temporary:Destroy()
+		Temporary:SetText("Should not error after destroy")
+	end,
+})
+
+local Runtime = Main:CreateSection("Runtime Flags and Dependencies")
+
+Runtime:CreateSlider({
 	Name = "Visible When Master Is On",
 	Flag = "dependent_visible_slider",
 	Min = 0,
 	Max = 100,
 	Default = 50,
 	Increment = 1,
-	Tooltip = "This should not consume layout space while hidden.",
 	DependsOn = {
 		Flag = "master_dependency",
 		Value = true,
@@ -54,131 +110,119 @@ Stress:CreateSlider({
 	},
 })
 
-Stress:CreateButton({
+Runtime:CreateButton({
 	Name = "Enabled When Master Is On",
-	Tooltip = "Disabled state should block interaction and look muted.",
 	DependsOn = {
 		Flag = "master_dependency",
 		Value = true,
 		Mode = "Enabled",
 	},
 	Callback = function()
-		print("Dependent button clicked")
+		MidasUI:Notify({ Title = "Dependency", Content = "Enabled dependency clicked.", Duration = 2 })
 	end,
 })
 
-Stress:CreateDivider()
-
-local longOptions = {
-	"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot",
-	"Golf", "Hotel", "India", "Juliet", "Kilo", "Lima",
-	"Mike", "November", "Oscar", "Papa", "Quebec", "Romeo",
-}
-
-Stress:CreateDropdown({
-	Name = "Long Dropdown",
-	Flag = "long_dropdown",
-	Options = longOptions,
-	Default = "Alpha",
-	MaxVisibleOptions = 6,
-	Tooltip = "The dropdown has its own scrollbar and should not destroy page layout.",
-	Callback = function(value)
-		print("Long dropdown:", value)
+Runtime:CreateButton({
+	Name = "SetFlag: Master On",
+	Callback = function()
+		MidasUI:SetFlag("master_dependency", true)
 	end,
 })
 
-for index = 1, 12 do
-	Stress:CreateSlider({
-		Name = "Stress Slider " .. index,
-		Flag = "stress_slider_" .. index,
-		Min = 0,
-		Max = 100,
-		Default = index * 5,
-		Increment = 5,
-		Tooltip = "Dense scrolling slider #" .. index,
-	})
-end
-
-local InputTab = Window:CreateTab({ Name = "Input", Icon = "user" })
-local Inputs = InputTab:CreateSection("Inputs and Keybinds")
-
-Inputs:CreateInput({
-	Name = "Typing Test",
-	Flag = "typing_test",
-	Placeholder = "Type here; keybinds should not fire while focused.",
-	Tooltip = "Use this to confirm focused TextBoxes suppress keybind callbacks.",
+Runtime:CreateButton({
+	Name = "SetFlag: Slider To 20",
+	Callback = function()
+		MidasUI:SetFlag("controlled_slider", 20)
+	end,
 })
 
-Inputs:CreateKeybind({
-	Name = "Toggle Key",
-	Flag = "toggle_key",
-	Default = Enum.KeyCode.F,
-	Mode = "Toggle",
-	Tooltip = "Click, press a key to assign. Escape cancels, Backspace clears.",
-	Callback = function(keyCode)
-		print("Toggle key fired:", keyCode)
-		MidasUI:Notify({
-			Title = "Toggle Key",
-			Content = "Pressed " .. tostring(keyCode),
-			Duration = 2,
+local DialogTab = Window:CreateTab({ Name = "Dialogs", Icon = "info" })
+local Dialogs = DialogTab:CreateSection("Dialogs and Window Methods")
+
+Dialogs:CreateButton({
+	Name = "Info Dialog",
+	Callback = function()
+		Window:Dialog({
+			Type = "Info",
+			Title = "Information",
+			Content = "This is a themed V1.4 dialog.",
 		})
 	end,
 })
 
-Inputs:CreateKeybind({
-	Name = "Hold Key",
-	Flag = "hold_key",
-	Default = Enum.KeyCode.LeftShift,
-	Mode = "Hold",
-	Tooltip = "Hold mode sends true on press and false on release.",
-	Callback = function(isHolding, keyCode)
-		print("Hold key:", isHolding, keyCode)
+Dialogs:CreateButton({
+	Name = "Confirm Dialog",
+	Callback = function()
+		MidasUI:Confirm({
+			Title = "Confirm Action",
+			Content = "Run the confirm callback?",
+			OnConfirm = function()
+				MidasUI:Notify({ Title = "Confirmed", Content = "Confirm callback ran.", Duration = 2 })
+			end,
+			OnCancel = function()
+				print("Confirm canceled")
+			end,
+		})
 	end,
 })
 
-Inputs:CreateButton({
-	Name = "Set Toggle Key To X",
+Dialogs:CreateButton({
+	Name = "Text Input Dialog",
 	Callback = function()
-		MidasUI:SetFlag("toggle_key", Enum.KeyCode.X)
+		MidasUI:Prompt({
+			Title = "Rename Window",
+			Content = "Enter a new window title.",
+			Placeholder = "Window title",
+			Default = "MidasUI V1.4",
+			OnConfirm = function(text)
+				Window:SetTitle(text)
+			end,
+		})
 	end,
 })
 
-Inputs:CreateButton({
-	Name = "Clear Toggle Key",
+Dialogs:CreateButton({
+	Name = "Hide Window For One Second",
 	Callback = function()
-		MidasUI:SetFlag("toggle_key", nil)
+		Window:Hide()
+		task.delay(1, function()
+			Window:Show()
+		end)
+	end,
+})
+
+Dialogs:CreateButton({
+	Name = "Minimize / Restore",
+	Callback = function()
+		Window:Minimize()
+		task.delay(1, function()
+			Window:Restore()
+		end)
 	end,
 })
 
 local Settings = Window:CreateTab({ Name = "Settings", Icon = "settings" })
-local ThemeSection = Settings:CreateSection("Theme")
+local Themes = Settings:CreateSection("Themes")
 
-ThemeSection:CreateDropdown({
-	Name = "Theme",
+Themes:CreateDropdown({
+	Name = "Runtime Theme",
 	Flag = "theme",
-	Options = { "DarkGold", "Midnight", "BlackWhite" },
+	Options = { "DarkGold", "Midnight", "BlackWhite", "ObsidianGold" },
 	Default = "DarkGold",
 	Callback = function(themeName)
 		MidasUI:SetTheme(themeName)
 	end,
 })
 
-ThemeSection:CreateButton({
-	Name = "Set Master On",
-	Tooltip = "Tests dependency refresh through SetFlag.",
+Themes:CreateButton({
+	Name = "Invalid Theme Warning",
+	Tooltip = "Only logs when debug mode is enabled.",
 	Callback = function()
-		MidasUI:SetFlag("master_dependency", true)
+		MidasUI:SetTheme("MissingTheme")
 	end,
 })
 
-ThemeSection:CreateButton({
-	Name = "Set Master Off",
-	Callback = function()
-		MidasUI:SetFlag("master_dependency", false)
-	end,
-})
-
-local Profiles = Settings:CreateSection("Profiles")
+local Profiles = Settings:CreateSection("Profiles and Diagnostics")
 
 Profiles:CreateInput({
 	Name = "Profile Name",
@@ -192,11 +236,7 @@ Profiles:CreateButton({
 	Callback = function()
 		local profile = MidasUI:GetFlag("profile_name") or "default"
 		local ok, err = MidasUI:SaveConfig(profile)
-		MidasUI:Notify({
-			Title = "Config",
-			Content = ok and ("Saved " .. profile) or tostring(err),
-			Duration = 3,
-		})
+		MidasUI:Notify({ Title = "Config", Content = ok and ("Saved " .. profile) or tostring(err), Duration = 3 })
 	end,
 })
 
@@ -205,40 +245,78 @@ Profiles:CreateButton({
 	Callback = function()
 		local profile = MidasUI:GetFlag("profile_name") or "default"
 		local ok, err = MidasUI:LoadConfig(profile)
-		MidasUI:Notify({
-			Title = "Config",
-			Content = ok and ("Loaded " .. profile) or tostring(err),
-			Duration = 3,
-		})
+		MidasUI:Notify({ Title = "Config", Content = ok and ("Loaded " .. profile) or tostring(err), Duration = 3 })
 	end,
 })
 
 Profiles:CreateButton({
-	Name = "Print Profiles",
+	Name = "Print Debug State",
 	Callback = function()
-		print("Profiles:", table.concat(MidasUI:ListConfigs(), ", "))
+		local state = MidasUI:GetDebugState()
+		if state then
+			print("MidasUI Debug:", state.Version, state.Theme, state.WindowCount, state.FlagCount, state.KeybindCount)
+		end
 	end,
 })
 
-local Bottom = Main:CreateSection("Bottom Reachability")
+local Stress = Main:CreateSection("Scrolling Stress")
 
-Bottom:CreateParagraph({
-	Text = "If you can read this and interact with the button below after opening long dropdowns above, the page canvas is updating correctly.",
+local longOptions = {
+	"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot",
+	"Golf", "Hotel", "India", "Juliet", "Kilo", "Lima",
+	"Mike", "November", "Oscar", "Papa", "Quebec", "Romeo",
+}
+
+Stress:CreateDropdown({
+	Name = "Long Dropdown",
+	Flag = "long_dropdown",
+	Options = longOptions,
+	Default = "Alpha",
+	MaxVisibleOptions = 6,
 })
 
-Bottom:CreateButton({
-	Name = "Bottom Button",
-	Callback = function()
-		MidasUI:Notify({
-			Title = "Bottom",
-			Content = "Bottom element is reachable.",
-			Duration = 2,
-		})
+for index = 1, 10 do
+	Stress:CreateSlider({
+		Name = "Stress Slider " .. index,
+		Flag = "stress_slider_" .. index,
+		Min = 0,
+		Max = 100,
+		Default = index * 5,
+		Increment = 5,
+	})
+end
+
+local Inputs = Window:CreateTab({ Name = "Input", Icon = "user" })
+local Keybinds = Inputs:CreateSection("Keybinds")
+
+Keybinds:CreateInput({
+	Name = "Typing Test",
+	Flag = "typing_test",
+	Placeholder = "Type here; keybinds should not fire while focused.",
+})
+
+Keybinds:CreateKeybind({
+	Name = "Toggle Key",
+	Flag = "toggle_key",
+	Default = Enum.KeyCode.F,
+	Mode = "Toggle",
+	Callback = function(keyCode)
+		print("Toggle key fired:", keyCode)
+	end,
+})
+
+Keybinds:CreateKeybind({
+	Name = "Hold Key",
+	Flag = "hold_key",
+	Default = Enum.KeyCode.LeftShift,
+	Mode = "Hold",
+	Callback = function(isHolding, keyCode)
+		print("Hold key:", isHolding, keyCode)
 	end,
 })
 
 MidasUI:Notify({
 	Title = "MidasUI",
-	Content = "V1.3 showcase loaded.",
+	Content = "V1.4 showcase loaded.",
 	Duration = 4,
 })

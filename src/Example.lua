@@ -2,7 +2,7 @@ local MidasUI = loadstring(game:HttpGet("URL_HERE"))()
 
 local Window = MidasUI:CreateWindow({
 	Title = "Midas",
-	Subtitle = "V1.3 Basic Example",
+	Subtitle = "V1.4 Basic Example",
 	Icon = "crown",
 	Theme = "DarkGold",
 	Size = UDim2.fromOffset(620, 460),
@@ -17,17 +17,13 @@ local Main = Window:CreateTab({
 
 local General = Main:CreateSection("General")
 
-General:CreateParagraph("MidasUI V1.3 keeps the beginner flow small while the framework handles layout, scrolling, config, and cleanup.")
+local Status = General:CreateParagraph("Status: ready")
 
 General:CreateButton({
-	Name = "Notify",
-	Tooltip = "Shows a small themed notification.",
+	Name = "Update Status",
+	Tooltip = "Uses the returned paragraph controller.",
 	Callback = function()
-		MidasUI:Notify({
-			Title = "Midas",
-			Content = "Hello from MidasUI V1.3.",
-			Duration = 3,
-		})
+		Status:SetText("Status: updated at " .. os.date("%X"))
 	end,
 })
 
@@ -35,7 +31,6 @@ General:CreateToggle({
 	Name = "Enabled",
 	Flag = "enabled",
 	Default = false,
-	Tooltip = "Saved in MidasUI.Flags.enabled.",
 	Callback = function(value)
 		print("Enabled:", value)
 	end,
@@ -48,9 +43,6 @@ General:CreateSlider({
 	Max = 100,
 	Default = 35,
 	Increment = 5,
-	Callback = function(value)
-		print("Volume:", value)
-	end,
 })
 
 General:CreateDropdown({
@@ -58,9 +50,6 @@ General:CreateDropdown({
 	Flag = "mode",
 	Options = { "Safe", "Normal", "Aggressive" },
 	Default = "Normal",
-	Callback = function(value)
-		print("Mode:", value)
-	end,
 })
 
 General:CreateInput({

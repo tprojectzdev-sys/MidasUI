@@ -2,6 +2,7 @@ local Input = {}
 Input.__index = Input
 
 function Input.new(context, section, options)
+	options = options or {}
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -99,6 +100,10 @@ function Input:GetValue()
 end
 
 function Input:SetValue(value, fireCallback)
+	if self.Destroyed then
+		return self
+	end
+
 	local nextValue = tostring(value or "")
 	local changed = self.Value ~= nextValue
 	self.Value = nextValue
@@ -114,28 +119,109 @@ function Input:SetValue(value, fireCallback)
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
 	end
+	return self
 end
 
 function Input:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Enabled = enabled == true
 	self.Box.TextEditable = self.Enabled
 	self.Label.TextTransparency = self.Enabled and 0 or 0.45
 	self.Label.TextColor3 = self.Enabled and self.Theme.Text or self.Theme.MutedText
 	self.Box.TextTransparency = self.Enabled and 0 or 0.45
 	self.Box.BackgroundTransparency = self.Enabled and 0 or 0.35
+	return self
+end
+
+function Input:Enable()
+	return self:SetEnabled(true)
+end
+
+function Input:Disable()
+	return self:SetEnabled(false)
+end
+
+function Input:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Input:Show()
+	return self:SetVisible(true)
+end
+
+function Input:Hide()
+	return self:SetVisible(false)
+end
+
+function Input:SetText(text)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(text or "")
+	self.Label.Text = self.Name
+	return self
+end
+
+function Input:SetPlaceholder(placeholder)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Placeholder = tostring(placeholder or "")
+	self.Box.PlaceholderText = self.Placeholder
+	return self
+end
+
+function Input:SetCallback(callback)
+	self.Callback = typeof(callback) == "function" and callback or function() end
+	return self
+end
+
+function Input:Set(value, fireCallback)
+	return self:SetValue(value, fireCallback)
+end
+
+function Input:Refresh()
+	if not self.Destroyed then
+		self:SetValue(self.Value, false)
+		self:SetEnabled(self.Enabled)
+	end
+	return self
 end
 
 function Input:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	self.Label.TextColor3 = theme.Text
 	self.Box.BackgroundColor3 = theme.Background
 	self.Box.TextColor3 = theme.Text
 	self.Box.PlaceholderColor3 = theme.MutedText
+	return self
 end
 
 function Input:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
+	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Input

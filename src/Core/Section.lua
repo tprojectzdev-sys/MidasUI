@@ -52,11 +52,26 @@ function Section.new(context, tab, name)
 end
 
 function Section:Set(name)
+	return self:Rename(name)
+end
+
+function Section:Rename(name)
 	self.Name = name
 	self.TitleLabel.Text = name
+	return self
 end
 
 function Section:_createElement(moduleName, options)
+	if self.Destroyed then
+		self.Library:_Warn("Create" .. moduleName .. " ignored: section is destroyed")
+		return nil
+	end
+
+	if options ~= nil and typeof(options) ~= "table" then
+		self.Library:_Warn("Create" .. moduleName .. " expected an options table")
+		options = {}
+	end
+
 	local element = self.Context.Elements[moduleName].new(self.Context, self, options or {})
 	table.insert(self.Elements, element)
 	return element
@@ -103,6 +118,10 @@ function Section:CreateDivider(options)
 end
 
 function Section:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 
 	for _, binding in ipairs(self._themeObjects) do
@@ -117,10 +136,45 @@ function Section:SetTheme(theme)
 			element:SetTheme(theme)
 		end
 	end
+
+	return self
+end
+
+function Section:Show()
+	if self.Frame then
+		self.Frame.Visible = true
+	end
+	return self
+end
+
+function Section:Hide()
+	if self.Frame then
+		self.Frame.Visible = false
+	end
+	return self
+end
+
+function Section:RefreshLayout()
+	if self.Tab and self.Tab.RefreshLayout then
+		self.Tab:RefreshLayout()
+	end
+	return self
+end
+
+function Section:RemoveElement(element)
+	if element and element.Destroy then
+		element:Destroy()
+	end
+	return self
 end
 
 function Section:Destroy()
-	for _, element in ipairs(self.Elements) do
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
+	for _, element in ipairs(table.clone(self.Elements)) do
 		if element.Destroy then
 			element:Destroy()
 		end
@@ -130,6 +184,14 @@ function Section:Destroy()
 
 	if self.Frame then
 		self.Frame:Destroy()
+	end
+
+	if self.Tab then
+		for index = #self.Tab.Sections, 1, -1 do
+			if self.Tab.Sections[index] == self then
+				table.remove(self.Tab.Sections, index)
+			end
+		end
 	end
 end
 

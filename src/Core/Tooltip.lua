@@ -107,6 +107,19 @@ function Tooltip:Hide(context)
 	end
 end
 
+function Tooltip:SetTheme(context)
+	local library = context.Library
+	local frame = library._tooltipFrame
+	local label = library._tooltipLabel
+	if frame then
+		frame.BackgroundColor3 = library.Theme.Card
+		context.Utility:ApplyStrokeTheme(frame, library.Theme.Stroke)
+	end
+	if label then
+		label.TextColor3 = library.Theme.Text
+	end
+end
+
 function Tooltip:Bind(context, element, target, text)
 	if not text or text == "" or not target then
 		return

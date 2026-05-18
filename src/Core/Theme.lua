@@ -1,5 +1,17 @@
 local Theme = {}
 
+Theme.RequiredKeys = {
+	"Background",
+	"Topbar",
+	"Sidebar",
+	"Card",
+	"Accent",
+	"Text",
+	"MutedText",
+	"Stroke",
+	"Danger",
+}
+
 Theme.Registry = {
 	DarkGold = {
 		Background = Color3.fromRGB(13, 13, 15),
@@ -40,17 +52,35 @@ Theme.Registry = {
 
 function Theme:Get(name)
 	if typeof(name) == "table" then
-		return name, "Custom"
+		return self:Normalize(name), "Custom"
 	end
 
 	local themeName = name or "DarkGold"
 	return self.Registry[themeName] or self.Registry.DarkGold, self.Registry[themeName] and themeName or "DarkGold"
 end
 
+function Theme:Normalize(values, baseName)
+	local base = self.Registry[baseName or "DarkGold"] or self.Registry.DarkGold
+	local normalized = {}
+
+	for _, key in ipairs(self.RequiredKeys) do
+		normalized[key] = values[key] or base[key]
+	end
+
+	return normalized
+end
+
 function Theme:Register(name, values)
-	assert(typeof(name) == "string", "Theme name must be a string")
-	assert(typeof(values) == "table", "Theme values must be a table")
-	self.Registry[name] = values
+	if typeof(name) ~= "string" or name == "" then
+		return false, "Theme name must be a non-empty string"
+	end
+
+	if typeof(values) ~= "table" then
+		return false, "Theme values must be a table"
+	end
+
+	self.Registry[name] = self:Normalize(values)
+	return true
 end
 
 return Theme

@@ -165,6 +165,18 @@ function Utility:ClampToViewport(frame, margin)
 	)
 end
 
+function Utility:ApplyStrokeTheme(root, color)
+	if not root then
+		return
+	end
+
+	for _, descendant in ipairs(root:GetDescendants()) do
+		if descendant:IsA("UIStroke") then
+			descendant.Color = color
+		end
+	end
+end
+
 function Utility:MakeDraggable(handle, target, connections, options)
 	options = options or {}
 	local dragging = false

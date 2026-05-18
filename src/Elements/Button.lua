@@ -2,6 +2,7 @@ local Button = {}
 Button.__index = Button
 
 function Button.new(context, section, options)
+	options = options or {}
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -79,22 +80,90 @@ function Button.new(context, section, options)
 end
 
 function Button:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Enabled = enabled == true
 	self.Instance.TextTransparency = self.Enabled and 0 or 0.45
 	self.Instance.BackgroundTransparency = self.Enabled and 0 or 0.35
+	return self
+end
+
+function Button:Enable()
+	return self:SetEnabled(true)
+end
+
+function Button:Disable()
+	return self:SetEnabled(false)
+end
+
+function Button:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Button:Show()
+	return self:SetVisible(true)
+end
+
+function Button:Hide()
+	return self:SetVisible(false)
+end
+
+function Button:SetText(text)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(text or "")
+	self.Instance.Text = self.Name
+	return self
+end
+
+function Button:SetCallback(callback)
+	self.Callback = typeof(callback) == "function" and callback or function() end
+	return self
+end
+
+function Button:Refresh()
+	if not self.Destroyed then
+		self:SetEnabled(self.Enabled)
+	end
+	return self
+end
+
+function Button:GetValue()
+	return nil
 end
 
 function Button:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	for _, binding in ipairs(self._themeObjects) do
 		local object, property, key = binding[1], binding[2], binding[3]
 		object[property] = theme[key]
 	end
+	return self
 end
 
 function Button:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Button

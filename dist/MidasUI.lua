@@ -1,4 +1,4 @@
--- MidasUI V1.3 single-file bundle
+-- MidasUI V1.4 single-file bundle
 -- Generated from src modules. Edit src/ first, then rebuild the bundle.
 local ModuleCache = {}
 local ModuleSources = {}
@@ -195,6 +195,18 @@ function Utility:ClampToViewport(frame, margin)
 	)
 end
 
+function Utility:ApplyStrokeTheme(root, color)
+	if not root then
+		return
+	end
+
+	for _, descendant in ipairs(root:GetDescendants()) do
+		if descendant:IsA("UIStroke") then
+			descendant.Color = color
+		end
+	end
+end
+
 function Utility:MakeDraggable(handle, target, connections, options)
 	options = options or {}
 	local dragging = false
@@ -260,6 +272,18 @@ end
 ModuleSources["Core/Theme"] = function()
 local Theme = {}
 
+Theme.RequiredKeys = {
+	"Background",
+	"Topbar",
+	"Sidebar",
+	"Card",
+	"Accent",
+	"Text",
+	"MutedText",
+	"Stroke",
+	"Danger",
+}
+
 Theme.Registry = {
 	DarkGold = {
 		Background = Color3.fromRGB(13, 13, 15),
@@ -300,17 +324,35 @@ Theme.Registry = {
 
 function Theme:Get(name)
 	if typeof(name) == "table" then
-		return name, "Custom"
+		return self:Normalize(name), "Custom"
 	end
 
 	local themeName = name or "DarkGold"
 	return self.Registry[themeName] or self.Registry.DarkGold, self.Registry[themeName] and themeName or "DarkGold"
 end
 
+function Theme:Normalize(values, baseName)
+	local base = self.Registry[baseName or "DarkGold"] or self.Registry.DarkGold
+	local normalized = {}
+
+	for _, key in ipairs(self.RequiredKeys) do
+		normalized[key] = values[key] or base[key]
+	end
+
+	return normalized
+end
+
 function Theme:Register(name, values)
-	assert(typeof(name) == "string", "Theme name must be a string")
-	assert(typeof(values) == "table", "Theme values must be a table")
-	self.Registry[name] = values
+	if typeof(name) ~= "string" or name == "" then
+		return false, "Theme name must be a non-empty string"
+	end
+
+	if typeof(values) ~= "table" then
+		return false, "Theme values must be a table"
+	end
+
+	self.Registry[name] = self:Normalize(values)
+	return true
 end
 
 return Theme
@@ -319,16 +361,40 @@ end
 ModuleSources["Core/Flags"] = function()
 local Flags = {}
 
+local function getControllers(library, flag)
+	local controllers = library._flagObjects[flag]
+	if not controllers then
+		controllers = {}
+		library._flagObjects[flag] = controllers
+	end
+
+	return controllers
+end
+
 function Flags:Register(library, flag, element)
-	if not flag then
+	if typeof(flag) ~= "string" or flag == "" then
+		if library._Warn then
+			library:_Warn("Flag registration skipped: invalid flag")
+		end
 		return
 	end
 
-	library._flagObjects[flag] = element
+	local controllers = getControllers(library, flag)
+	for _, controller in ipairs(controllers) do
+		if controller == element then
+			return
+		end
+	end
+
+	if #controllers > 0 and library._Warn then
+		library:_Warn("Multiple elements are bound to flag '" .. flag .. "'")
+	end
+
+	table.insert(controllers, element)
 
 	if library.Flags[flag] ~= nil then
 		element:SetValue(library.Flags[flag], false)
-	else
+	elseif element.GetValue then
 		library.Flags[flag] = element:GetValue()
 	end
 
@@ -337,17 +403,50 @@ function Flags:Register(library, flag, element)
 	end
 end
 
+function Flags:Unregister(library, flag, element)
+	if typeof(flag) ~= "string" or flag == "" then
+		return
+	end
+
+	local controllers = library._flagObjects[flag]
+	if not controllers then
+		return
+	end
+
+	for index = #controllers, 1, -1 do
+		if controllers[index] == element or controllers[index].Destroyed then
+			table.remove(controllers, index)
+		end
+	end
+
+	if #controllers == 0 then
+		library._flagObjects[flag] = nil
+	end
+end
+
 function Flags:Get(library, flag)
 	return library.Flags[flag]
 end
 
 function Flags:Set(library, flag, value, fireCallback)
-	local element = library._flagObjects[flag]
+	local controllers = library._flagObjects[flag]
+	local shouldFire = fireCallback ~= false
 
-	if element and element.SetValue then
-		element:SetValue(value, fireCallback ~= false)
-	else
-		library.Flags[flag] = value
+	library.Flags[flag] = value
+
+	if controllers then
+		for index = #controllers, 1, -1 do
+			local controller = controllers[index]
+			if not controller or controller.Destroyed or not controller.Instance or not controller.Instance.Parent then
+				table.remove(controllers, index)
+			elseif controller.SetValue then
+				controller:SetValue(value, shouldFire)
+			end
+		end
+
+		if #controllers == 0 then
+			library._flagObjects[flag] = nil
+		end
 	end
 
 	if library._RefreshDependencies then
@@ -762,6 +861,34 @@ function Notify:Show(context, options)
 	end)
 end
 
+function Notify:SetTheme(context)
+	local library = context.Library
+	local holder = library._notifyHolder
+	if not holder then
+		return
+	end
+
+	local theme = library.Theme
+	for _, frame in ipairs(holder:GetChildren()) do
+		if frame:IsA("Frame") and frame.Name == "Notification" then
+			frame.BackgroundColor3 = theme.Card
+			context.Utility:ApplyStrokeTheme(frame, theme.Stroke)
+			local title = frame:FindFirstChild("Title")
+			local content = frame:FindFirstChild("Content")
+			local accent = frame:FindFirstChild("Accent")
+			if title then
+				title.TextColor3 = theme.Text
+			end
+			if content then
+				content.TextColor3 = theme.MutedText
+			end
+			if accent then
+				accent.BackgroundColor3 = theme.Accent
+			end
+		end
+	end
+end
+
 return Notify
 
 end
@@ -872,6 +999,19 @@ function Tooltip:Hide(context)
 	local frame = library._tooltipFrame
 	if frame then
 		frame.Visible = false
+	end
+end
+
+function Tooltip:SetTheme(context)
+	local library = context.Library
+	local frame = library._tooltipFrame
+	local label = library._tooltipLabel
+	if frame then
+		frame.BackgroundColor3 = library.Theme.Card
+		context.Utility:ApplyStrokeTheme(frame, library.Theme.Stroke)
+	end
+	if label then
+		label.TextColor3 = library.Theme.Text
 	end
 end
 
@@ -1053,11 +1193,232 @@ end
 return Keybinds
 
 end
+ModuleSources["Core/Dialog"] = function()
+local Dialog = {}
+
+function Dialog:Init(context)
+	local library = context.Library
+	local utility = context.Utility
+
+	if library._dialogGui then
+		return
+	end
+
+	local gui = utility:Create("ScreenGui", {
+		Name = "MidasUI_Dialogs",
+		IgnoreGuiInset = true,
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = utility:GetGuiParent(),
+	})
+
+	library._dialogGui = gui
+end
+
+function Dialog:Close(context)
+	local library = context.Library
+	if library._activeDialog and library._activeDialog.Gui then
+		library._activeDialog.Gui:Destroy()
+	end
+	library._activeDialog = nil
+end
+
+function Dialog:SetTheme(context)
+	local library = context.Library
+	local dialog = library._activeDialog
+	if not dialog then
+		return
+	end
+
+	local theme = library.Theme
+	if dialog.Card then
+		dialog.Card.BackgroundColor3 = theme.Card
+		context.Utility:ApplyStrokeTheme(dialog.Card, theme.Stroke)
+	end
+	if dialog.Title then
+		dialog.Title.TextColor3 = theme.Text
+	end
+	if dialog.Content then
+		dialog.Content.TextColor3 = theme.MutedText
+	end
+	if dialog.Input then
+		dialog.Input.BackgroundColor3 = theme.Background
+		dialog.Input.TextColor3 = theme.Text
+		dialog.Input.PlaceholderColor3 = theme.MutedText
+	end
+	for _, button in ipairs(dialog.Buttons or {}) do
+		button.BackgroundColor3 = button.Name == "Confirm" and theme.Accent or theme.Background
+		button.TextColor3 = button.Name == "Confirm" and theme.Background or theme.Text
+	end
+end
+
+function Dialog:Show(context, options)
+	options = options or {}
+	self:Init(context)
+	self:Close(context)
+
+	local library = context.Library
+	local utility = context.Utility
+	local theme = library.Theme
+	local dialogType = options.Type or "Info"
+	local callbacks = {
+		Confirm = options.OnConfirm or options.ConfirmCallback or options.Callback,
+		Cancel = options.OnCancel or options.CancelCallback,
+	}
+
+	local overlay = utility:Create("TextButton", {
+		Name = "Overlay",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 0.42,
+		Text = "",
+		AutoButtonColor = false,
+		Parent = library._dialogGui,
+	})
+
+	local card = utility:Create("Frame", {
+		Name = "Dialog",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(380, dialogType == "Input" and 218 or 178),
+		BackgroundColor3 = theme.Card,
+		Parent = overlay,
+	})
+	utility:Corner(card, 12)
+	utility:Stroke(card, theme.Stroke, 0.18)
+	utility:Padding(card, { X = 18, Y = 16 })
+
+	local title = utility:Create("TextLabel", {
+		Name = "Title",
+		Size = UDim2.new(1, -4, 0, 24),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamSemibold,
+		Text = tostring(options.Title or "MidasUI"),
+		TextColor3 = theme.Text,
+		TextSize = 16,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = card,
+	})
+
+	local content = utility:Create("TextLabel", {
+		Name = "Content",
+		Position = UDim2.fromOffset(0, 34),
+		Size = UDim2.new(1, 0, 0, dialogType == "Input" and 44 or 62),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = tostring(options.Content or ""),
+		TextColor3 = theme.MutedText,
+		TextSize = 13,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Parent = card,
+	})
+
+	local inputBox
+	if dialogType == "Input" then
+		inputBox = utility:Create("TextBox", {
+			Name = "Input",
+			Position = UDim2.fromOffset(0, 88),
+			Size = UDim2.new(1, 0, 0, 34),
+			BackgroundColor3 = theme.Background,
+			ClearTextOnFocus = false,
+			Font = Enum.Font.Gotham,
+			PlaceholderText = tostring(options.Placeholder or ""),
+			PlaceholderColor3 = theme.MutedText,
+			Text = tostring(options.Default or ""),
+			TextColor3 = theme.Text,
+			TextSize = 13,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = card,
+		})
+		utility:Corner(inputBox, 8)
+		utility:Stroke(inputBox, theme.Stroke, 0.5)
+		utility:Padding(inputBox, { X = 10 })
+	end
+
+	local buttonRow = utility:Create("Frame", {
+		Name = "Actions",
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 34),
+		BackgroundTransparency = 1,
+		Parent = card,
+	})
+	utility:List(buttonRow, 8, true)
+
+	local controller = {}
+	local buttons = {}
+
+	function controller:Close()
+		Dialog:Close(context)
+	end
+
+	local function addButton(name, text, primary, callback)
+		local button = utility:Create("TextButton", {
+			Name = name,
+			Size = UDim2.fromOffset(112, 34),
+			BackgroundColor3 = primary and theme.Accent or theme.Background,
+			Font = Enum.Font.GothamMedium,
+			Text = tostring(text),
+			TextColor3 = primary and theme.Background or theme.Text,
+			TextSize = 13,
+			AutoButtonColor = false,
+			Parent = buttonRow,
+		})
+		utility:Corner(button, 8)
+		utility:Stroke(button, primary and theme.Accent or theme.Stroke, primary and 0.2 or 0.5)
+		table.insert(buttons, button)
+
+		button.MouseButton1Click:Connect(function()
+			if callback then
+				if dialogType == "Input" and name == "Confirm" then
+					task.spawn(callback, inputBox and inputBox.Text or "")
+				else
+					task.spawn(callback)
+				end
+			end
+			controller:Close()
+		end)
+	end
+
+	if dialogType == "Confirm" or dialogType == "Input" then
+		addButton("Cancel", options.CancelText or "Cancel", false, callbacks.Cancel)
+	end
+	addButton("Confirm", options.ConfirmText or (dialogType == "Info" and "OK" or "Confirm"), true, callbacks.Confirm)
+
+	library._activeDialog = {
+		Gui = overlay,
+		Card = card,
+		Title = title,
+		Content = content,
+		Input = inputBox,
+		Buttons = buttons,
+		Controller = controller,
+	}
+
+	overlay.BackgroundTransparency = 1
+	card.Position = UDim2.fromScale(0.5, 0.48)
+	utility:Tween(overlay, 0.14, { BackgroundTransparency = 0.42 })
+	utility:Tween(card, 0.16, { Position = UDim2.fromScale(0.5, 0.5) })
+
+	return controller
+end
+
+return Dialog
+
+end
 ModuleSources["Core/Window"] = function()
 local Window = {}
 Window.__index = Window
 
 function Window.new(context, options)
+	if options ~= nil and typeof(options) ~= "table" then
+		context.Library:_Warn("Window.new expected an options table")
+		options = {}
+	end
+
 	options = options or {}
 
 	local self = setmetatable({
@@ -1234,6 +1595,9 @@ function Window.new(context, options)
 	self.Gui = gui
 	self.Main = main
 	self.Topbar = topbar
+	self.TitleLabel = title
+	self.SubtitleLabel = subtitle
+	self.IconLabel = icon
 	self.Sidebar = sidebar
 	self.TabList = tabList
 	self.Content = content
@@ -1329,6 +1693,11 @@ function Window.new(context, options)
 end
 
 function Window:CreateTab(options)
+	if self.Closed then
+		self.Library:_Warn("CreateTab ignored: window is destroyed")
+		return nil
+	end
+
 	options = typeof(options) == "table" and options or { Name = tostring(options) }
 	local tab = self.Context.Tab.new(self.Context, self, options)
 	table.insert(self.Tabs, tab)
@@ -1341,6 +1710,24 @@ function Window:CreateTab(options)
 end
 
 function Window:SelectTab(tab)
+	if self.Closed then
+		return
+	end
+
+	if typeof(tab) == "string" then
+		for _, item in ipairs(self.Tabs) do
+			if item.Name == tab then
+				tab = item
+				break
+			end
+		end
+	end
+
+	if typeof(tab) ~= "table" or tab.Destroyed then
+		self.Library:_Warn("SelectTab ignored: invalid tab")
+		return
+	end
+
 	self.ActiveTab = tab
 
 	for _, item in ipairs(self.Tabs) do
@@ -1366,6 +1753,11 @@ function Window:SetMinimized(value)
 end
 
 function Window:SetTheme(theme)
+	if typeof(theme) == "string" then
+		self.Library:SetTheme(theme)
+		return self
+	end
+
 	self.Theme = theme
 
 	for _, binding in ipairs(self._themeObjects) do
@@ -1375,9 +1767,66 @@ function Window:SetTheme(theme)
 		end
 	end
 
+	self.Utility:ApplyStrokeTheme(self.Main, theme.Stroke)
+
 	for _, tab in ipairs(self.Tabs) do
 		tab:SetTheme(theme)
 	end
+
+	return self
+end
+
+function Window:Show()
+	if not self.Closed and self.Gui then
+		self.Gui.Enabled = true
+	end
+	return self
+end
+
+function Window:Hide()
+	if not self.Closed and self.Gui then
+		self.Gui.Enabled = false
+	end
+	return self
+end
+
+function Window:Minimize()
+	self:SetMinimized(true)
+	return self
+end
+
+function Window:Restore()
+	self:SetMinimized(false)
+	return self
+end
+
+function Window:Close()
+	self:Destroy()
+end
+
+function Window:SetTitle(titleText)
+	self.Title = tostring(titleText or "")
+	if self.TitleLabel then
+		self.TitleLabel.Text = self.Title
+	end
+	return self
+end
+
+function Window:SetSubtitle(subtitleText)
+	self.Subtitle = tostring(subtitleText or "")
+	if self.SubtitleLabel then
+		self.SubtitleLabel.Text = self.Subtitle
+	end
+	return self
+end
+
+function Window:Notify(options)
+	self.Library:Notify(options)
+	return self
+end
+
+function Window:Dialog(options)
+	return self.Library:Dialog(options)
 end
 
 function Window:Destroy()
@@ -1386,6 +1835,7 @@ function Window:Destroy()
 	end
 
 	self.Closed = true
+	self.Destroyed = true
 
 	if self.SaveConfig then
 		self.Library:SaveConfig()
@@ -1395,7 +1845,7 @@ function Window:Destroy()
 		self.Context.Tooltip:Hide(self.Context)
 	end
 
-	for _, tab in ipairs(self.Tabs) do
+	for _, tab in ipairs(table.clone(self.Tabs)) do
 		if tab.Destroy then
 			tab:Destroy()
 		end
@@ -1427,6 +1877,7 @@ local Tab = {}
 Tab.__index = Tab
 
 function Tab.new(context, window, options)
+	options = typeof(options) == "table" and options or {}
 	local self = setmetatable({
 		Context = context,
 		Window = window,
@@ -1517,19 +1968,64 @@ function Tab.new(context, window, options)
 end
 
 function Tab:CreateSection(name)
+	if self.Destroyed then
+		self.Library:_Warn("CreateSection ignored: tab is destroyed")
+		return nil
+	end
+
 	local section = self.Context.Section.new(self.Context, self, name)
 	table.insert(self.Sections, section)
 	return section
 end
 
 function Tab:SetActive(active)
+	if self.Destroyed then
+		return
+	end
+
 	self.Page.Visible = active
 	self.Button.BackgroundTransparency = active and 0 or 1
 	self.IconLabel.TextColor3 = active and self.Theme.Accent or self.Theme.MutedText
 	self.Label.TextColor3 = active and self.Theme.Text or self.Theme.MutedText
 end
 
+function Tab:Show()
+	if self.Button then
+		self.Button.Visible = true
+	end
+	return self
+end
+
+function Tab:Hide()
+	if self.Button then
+		self.Button.Visible = false
+	end
+	if self.Window.ActiveTab == self then
+		self.Page.Visible = false
+	end
+	return self
+end
+
+function Tab:Rename(name)
+	self.Name = tostring(name or self.Name)
+	if self.Label then
+		self.Label.Text = self.Name
+	end
+	return self
+end
+
+function Tab:RefreshLayout()
+	if self.CanvasConnection and self.PageList then
+		self.Page.CanvasSize = UDim2.fromOffset(0, self.PageList.AbsoluteContentSize.Y + 28)
+	end
+	return self
+end
+
 function Tab:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	self.Page.ScrollBarImageColor3 = theme.Accent
 
@@ -1545,9 +2041,16 @@ function Tab:SetTheme(theme)
 	for _, section in ipairs(self.Sections) do
 		section:SetTheme(theme)
 	end
+
+	return self
 end
 
 function Tab:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
 	self.Utility:DisconnectAll(self.Connections)
 
 	if self.CanvasConnection then
@@ -1555,7 +2058,7 @@ function Tab:Destroy()
 		self.CanvasConnection = nil
 	end
 
-	for _, section in ipairs(self.Sections) do
+	for _, section in ipairs(table.clone(self.Sections)) do
 		if section.Destroy then
 			section:Destroy()
 		end
@@ -1567,6 +2070,12 @@ function Tab:Destroy()
 
 	if self.Button then
 		self.Button:Destroy()
+	end
+
+	for index = #self.Window.Tabs, 1, -1 do
+		if self.Window.Tabs[index] == self then
+			table.remove(self.Window.Tabs, index)
+		end
 	end
 end
 
@@ -1628,11 +2137,26 @@ function Section.new(context, tab, name)
 end
 
 function Section:Set(name)
+	return self:Rename(name)
+end
+
+function Section:Rename(name)
 	self.Name = name
 	self.TitleLabel.Text = name
+	return self
 end
 
 function Section:_createElement(moduleName, options)
+	if self.Destroyed then
+		self.Library:_Warn("Create" .. moduleName .. " ignored: section is destroyed")
+		return nil
+	end
+
+	if options ~= nil and typeof(options) ~= "table" then
+		self.Library:_Warn("Create" .. moduleName .. " expected an options table")
+		options = {}
+	end
+
 	local element = self.Context.Elements[moduleName].new(self.Context, self, options or {})
 	table.insert(self.Elements, element)
 	return element
@@ -1679,6 +2203,10 @@ function Section:CreateDivider(options)
 end
 
 function Section:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 
 	for _, binding in ipairs(self._themeObjects) do
@@ -1693,10 +2221,45 @@ function Section:SetTheme(theme)
 			element:SetTheme(theme)
 		end
 	end
+
+	return self
+end
+
+function Section:Show()
+	if self.Frame then
+		self.Frame.Visible = true
+	end
+	return self
+end
+
+function Section:Hide()
+	if self.Frame then
+		self.Frame.Visible = false
+	end
+	return self
+end
+
+function Section:RefreshLayout()
+	if self.Tab and self.Tab.RefreshLayout then
+		self.Tab:RefreshLayout()
+	end
+	return self
+end
+
+function Section:RemoveElement(element)
+	if element and element.Destroy then
+		element:Destroy()
+	end
+	return self
 end
 
 function Section:Destroy()
-	for _, element in ipairs(self.Elements) do
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
+	for _, element in ipairs(table.clone(self.Elements)) do
 		if element.Destroy then
 			element:Destroy()
 		end
@@ -1706,6 +2269,14 @@ function Section:Destroy()
 
 	if self.Frame then
 		self.Frame:Destroy()
+	end
+
+	if self.Tab then
+		for index = #self.Tab.Sections, 1, -1 do
+			if self.Tab.Sections[index] == self then
+				table.remove(self.Tab.Sections, index)
+			end
+		end
 	end
 end
 
@@ -1717,6 +2288,7 @@ local Button = {}
 Button.__index = Button
 
 function Button.new(context, section, options)
+	options = options or {}
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -1794,22 +2366,90 @@ function Button.new(context, section, options)
 end
 
 function Button:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Enabled = enabled == true
 	self.Instance.TextTransparency = self.Enabled and 0 or 0.45
 	self.Instance.BackgroundTransparency = self.Enabled and 0 or 0.35
+	return self
+end
+
+function Button:Enable()
+	return self:SetEnabled(true)
+end
+
+function Button:Disable()
+	return self:SetEnabled(false)
+end
+
+function Button:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Button:Show()
+	return self:SetVisible(true)
+end
+
+function Button:Hide()
+	return self:SetVisible(false)
+end
+
+function Button:SetText(text)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(text or "")
+	self.Instance.Text = self.Name
+	return self
+end
+
+function Button:SetCallback(callback)
+	self.Callback = typeof(callback) == "function" and callback or function() end
+	return self
+end
+
+function Button:Refresh()
+	if not self.Destroyed then
+		self:SetEnabled(self.Enabled)
+	end
+	return self
+end
+
+function Button:GetValue()
+	return nil
 end
 
 function Button:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	for _, binding in ipairs(self._themeObjects) do
 		local object, property, key = binding[1], binding[2], binding[3]
 		object[property] = theme[key]
 	end
+	return self
 end
 
 function Button:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Button
@@ -1820,6 +2460,7 @@ local Toggle = {}
 Toggle.__index = Toggle
 
 function Toggle.new(context, section, options)
+	options = options or {}
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -1927,6 +2568,10 @@ function Toggle:GetValue()
 end
 
 function Toggle:SetValue(value, fireCallback)
+	if self.Destroyed then
+		return self
+	end
+
 	local nextValue = value == true
 	local changed = self.Value ~= nextValue
 	self.Value = nextValue
@@ -1947,28 +2592,100 @@ function Toggle:SetValue(value, fireCallback)
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
 	end
+
+	return self
 end
 
 function Toggle:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Enabled = enabled == true
 	self.Label.TextTransparency = self.Enabled and 0 or 0.45
 	self.Label.TextColor3 = self.Enabled and self.Theme.Text or self.Theme.MutedText
 	self.Track.BackgroundTransparency = self.Enabled and 0 or 0.35
 	self.Knob.BackgroundTransparency = self.Enabled and 0 or 0.35
+	return self
+end
+
+function Toggle:Enable()
+	return self:SetEnabled(true)
+end
+
+function Toggle:Disable()
+	return self:SetEnabled(false)
+end
+
+function Toggle:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Toggle:Show()
+	return self:SetVisible(true)
+end
+
+function Toggle:Hide()
+	return self:SetVisible(false)
+end
+
+function Toggle:SetText(text)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(text or "")
+	self.Label.Text = self.Name
+	return self
+end
+
+function Toggle:SetCallback(callback)
+	self.Callback = typeof(callback) == "function" and callback or function() end
+	return self
+end
+
+function Toggle:Set(value, fireCallback)
+	return self:SetValue(value, fireCallback)
+end
+
+function Toggle:Refresh()
+	if not self.Destroyed then
+		self:SetValue(self.Value, false)
+		self:SetEnabled(self.Enabled)
+	end
+	return self
 end
 
 function Toggle:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	for _, binding in ipairs(self._themeObjects) do
 		local object, property, key = binding[1], binding[2], binding[3]
 		object[property] = theme[key]
 	end
 	self:SetValue(self.Value, false)
+	return self
 end
 
 function Toggle:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
+	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Toggle
@@ -1987,6 +2704,19 @@ local function snap(value, min, max, increment)
 end
 
 function Slider.new(context, section, options)
+	options = options or {}
+	local min = tonumber(options.Min) or 0
+	local max = tonumber(options.Max) or 100
+	if max < min then
+		min, max = max, min
+		context.Library:_Warn("Slider '" .. tostring(options.Name or "Slider") .. "' had Max below Min; values were swapped")
+	end
+
+	local increment = math.abs(tonumber(options.Increment) or 1)
+	if increment <= 0 then
+		increment = 1
+	end
+
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -1995,10 +2725,10 @@ function Slider.new(context, section, options)
 		Theme = context.Library.Theme,
 		Name = options.Name or "Slider",
 		Flag = options.Flag,
-		Min = tonumber(options.Min) or 0,
-		Max = tonumber(options.Max) or 100,
-		Increment = tonumber(options.Increment) or 1,
-		Value = tonumber(options.Default) or tonumber(options.Min) or 0,
+		Min = min,
+		Max = max,
+		Increment = increment,
+		Value = tonumber(options.Default) or min,
 		Callback = options.Callback or function() end,
 		Connections = {},
 		Dragging = false,
@@ -2149,6 +2879,10 @@ function Slider:GetValue()
 end
 
 function Slider:SetValue(value, fireCallback)
+	if self.Destroyed then
+		return self
+	end
+
 	local nextValue = snap(tonumber(value) or self.Min, self.Min, self.Max, self.Increment)
 	local changed = self.Value ~= nextValue
 	self.Value = nextValue
@@ -2165,9 +2899,15 @@ function Slider:SetValue(value, fireCallback)
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
 	end
+
+	return self
 end
 
 function Slider:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Enabled = enabled == true
 	self.Label.TextTransparency = self.Enabled and 0 or 0.45
 	self.ValueLabel.TextTransparency = self.Enabled and 0 or 0.45
@@ -2179,20 +2919,104 @@ function Slider:SetEnabled(enabled)
 		self.Dragging = false
 		self.Utility:Tween(self.Knob, 0.12, { Size = UDim2.fromOffset(16, 16) })
 	end
+	return self
+end
+
+function Slider:Enable()
+	return self:SetEnabled(true)
+end
+
+function Slider:Disable()
+	return self:SetEnabled(false)
+end
+
+function Slider:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Slider:Show()
+	return self:SetVisible(true)
+end
+
+function Slider:Hide()
+	return self:SetVisible(false)
+end
+
+function Slider:SetText(text)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(text or "")
+	self.Label.Text = self.Name
+	return self
+end
+
+function Slider:SetCallback(callback)
+	self.Callback = typeof(callback) == "function" and callback or function() end
+	return self
+end
+
+function Slider:Set(value, fireCallback)
+	return self:SetValue(value, fireCallback)
+end
+
+function Slider:SetRange(min, max, increment)
+	if self.Destroyed then
+		return self
+	end
+
+	min = tonumber(min) or self.Min
+	max = tonumber(max) or self.Max
+	if max < min then
+		min, max = max, min
+	end
+
+	self.Min = min
+	self.Max = max
+	self.Increment = math.max(math.abs(tonumber(increment) or self.Increment), 0.0001)
+	self:SetValue(self.Value, false)
+	return self
+end
+
+function Slider:Refresh()
+	if not self.Destroyed then
+		self:SetValue(self.Value, false)
+		self:SetEnabled(self.Enabled)
+	end
+	return self
 end
 
 function Slider:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	self.Label.TextColor3 = theme.Text
 	self.ValueLabel.TextColor3 = theme.Accent
 	self.Bar.BackgroundColor3 = theme.Background
 	self.Fill.BackgroundColor3 = theme.Accent
 	self.Knob.BackgroundColor3 = theme.Text
+	return self
 end
 
 function Slider:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
+	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Slider
@@ -2203,6 +3027,7 @@ local Dropdown = {}
 Dropdown.__index = Dropdown
 
 function Dropdown.new(context, section, options)
+	options = options or {}
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -2221,6 +3046,10 @@ function Dropdown.new(context, section, options)
 	}, Dropdown)
 
 	if self.Value == nil and self.Options[1] ~= nil then
+		self.Value = self.Options[1]
+	end
+	if self.Value ~= nil and not table.find(self.Options, self.Value) then
+		context.Library:_Warn("Dropdown '" .. tostring(self.Name) .. "' default was not in Options")
 		self.Value = self.Options[1]
 	end
 
@@ -2401,6 +3230,10 @@ function Dropdown:GetValue()
 end
 
 function Dropdown:SetExpanded(value, instant)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Expanded = value == true
 	local maxVisible = math.max(self.MaxVisibleOptions, 1)
 	local height = self.Expanded and math.min(#self.Options, maxVisible) * 32 + 8 or 0
@@ -2416,9 +3249,19 @@ function Dropdown:SetExpanded(value, instant)
 		self.Utility:Tween(self.List, 0.16, { Size = UDim2.new(1, 0, 0, height) })
 		self.Utility:Tween(self.Instance, 0.16, { Size = UDim2.new(1, 0, 0, frameHeight) })
 	end
+	return self
 end
 
 function Dropdown:SetValue(value, fireCallback)
+	if self.Destroyed then
+		return self
+	end
+
+	if value ~= nil and not table.find(self.Options, value) then
+		self.Library:_Warn("Dropdown '" .. self.Name .. "' ignored invalid value '" .. tostring(value) .. "'")
+		return self
+	end
+
 	local changed = self.Value ~= value
 	self.Value = value
 
@@ -2437,9 +3280,14 @@ function Dropdown:SetValue(value, fireCallback)
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
 	end
+	return self
 end
 
 function Dropdown:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Enabled = enabled == true
 	self.Label.TextTransparency = self.Enabled and 0 or 0.45
 	self.ValueLabel.TextTransparency = self.Enabled and 0 or 0.45
@@ -2448,9 +3296,99 @@ function Dropdown:SetEnabled(enabled)
 	if not self.Enabled then
 		self:SetExpanded(false)
 	end
+	return self
+end
+
+function Dropdown:Enable()
+	return self:SetEnabled(true)
+end
+
+function Dropdown:Disable()
+	return self:SetEnabled(false)
+end
+
+function Dropdown:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Dropdown:Show()
+	return self:SetVisible(true)
+end
+
+function Dropdown:Hide()
+	return self:SetVisible(false)
+end
+
+function Dropdown:SetText(text)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(text or "")
+	self.Label.Text = self.Name
+	return self
+end
+
+function Dropdown:SetCallback(callback)
+	self.Callback = typeof(callback) == "function" and callback or function() end
+	return self
+end
+
+function Dropdown:Set(value, fireCallback)
+	return self:SetValue(value, fireCallback)
+end
+
+function Dropdown:SetOptions(options, defaultValue)
+	if self.Destroyed then
+		return self
+	end
+
+	if typeof(options) ~= "table" then
+		self.Library:_Warn("Dropdown '" .. self.Name .. "' SetOptions ignored: options must be a table")
+		return self
+	end
+
+	for _, item in ipairs(self.OptionButtons) do
+		if item.Button then
+			item.Button:Destroy()
+		end
+	end
+
+	table.clear(self.OptionButtons)
+	self.Options = options
+
+	for _, option in ipairs(self.Options) do
+		self:_addOption(option)
+	end
+
+	local nextValue = defaultValue
+	if nextValue == nil or not table.find(self.Options, nextValue) then
+		nextValue = self.Options[1]
+	end
+
+	self:SetValue(nextValue, false)
+	self:SetExpanded(false, true)
+	return self
+end
+
+function Dropdown:Refresh()
+	if not self.Destroyed then
+		self:SetValue(self.Value, false)
+		self:SetEnabled(self.Enabled)
+	end
+	return self
 end
 
 function Dropdown:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	self.Label.TextColor3 = theme.Text
 	self.Button.BackgroundColor3 = theme.Background
@@ -2464,16 +3402,26 @@ function Dropdown:SetTheme(theme)
 	end
 
 	self:SetValue(self.Value, false)
+	return self
 end
 
 function Dropdown:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
+	self.Context.Flags:Unregister(self.Library, self.Flag, self)
+
 	if self.CanvasConnection then
 		self.CanvasConnection:Disconnect()
 		self.CanvasConnection = nil
 	end
 
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Dropdown
@@ -2484,6 +3432,7 @@ local Input = {}
 Input.__index = Input
 
 function Input.new(context, section, options)
+	options = options or {}
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -2581,6 +3530,10 @@ function Input:GetValue()
 end
 
 function Input:SetValue(value, fireCallback)
+	if self.Destroyed then
+		return self
+	end
+
 	local nextValue = tostring(value or "")
 	local changed = self.Value ~= nextValue
 	self.Value = nextValue
@@ -2596,28 +3549,109 @@ function Input:SetValue(value, fireCallback)
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
 	end
+	return self
 end
 
 function Input:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Enabled = enabled == true
 	self.Box.TextEditable = self.Enabled
 	self.Label.TextTransparency = self.Enabled and 0 or 0.45
 	self.Label.TextColor3 = self.Enabled and self.Theme.Text or self.Theme.MutedText
 	self.Box.TextTransparency = self.Enabled and 0 or 0.45
 	self.Box.BackgroundTransparency = self.Enabled and 0 or 0.35
+	return self
+end
+
+function Input:Enable()
+	return self:SetEnabled(true)
+end
+
+function Input:Disable()
+	return self:SetEnabled(false)
+end
+
+function Input:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Input:Show()
+	return self:SetVisible(true)
+end
+
+function Input:Hide()
+	return self:SetVisible(false)
+end
+
+function Input:SetText(text)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(text or "")
+	self.Label.Text = self.Name
+	return self
+end
+
+function Input:SetPlaceholder(placeholder)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Placeholder = tostring(placeholder or "")
+	self.Box.PlaceholderText = self.Placeholder
+	return self
+end
+
+function Input:SetCallback(callback)
+	self.Callback = typeof(callback) == "function" and callback or function() end
+	return self
+end
+
+function Input:Set(value, fireCallback)
+	return self:SetValue(value, fireCallback)
+end
+
+function Input:Refresh()
+	if not self.Destroyed then
+		self:SetValue(self.Value, false)
+		self:SetEnabled(self.Enabled)
+	end
+	return self
 end
 
 function Input:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	self.Label.TextColor3 = theme.Text
 	self.Box.BackgroundColor3 = theme.Background
 	self.Box.TextColor3 = theme.Text
 	self.Box.PlaceholderColor3 = theme.MutedText
+	return self
 end
 
 function Input:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
+	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Input
@@ -2759,6 +3793,7 @@ function Keybind:Refresh()
 
 	self.Button.BackgroundTransparency = self.Enabled == false and 0.35 or 0
 	self.Label.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
+	return self
 end
 
 function Keybind:StartListening()
@@ -2825,7 +3860,14 @@ function Keybind:CaptureInput(keyCode)
 end
 
 function Keybind:SetValue(value)
+	if self.Destroyed then
+		return self
+	end
+
 	local keyCode = normalizeKeyCode(value)
+	if value ~= nil and not keyCode then
+		self.Library:_Warn("Keybind '" .. self.Name .. "' received an invalid key value")
+	end
 	self.Value = keyCode
 
 	if self.Flag then
@@ -2834,9 +3876,14 @@ function Keybind:SetValue(value)
 	else
 		self:Refresh()
 	end
+	return self
 end
 
 function Keybind:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Enabled = enabled == true
 	self.Context.Keybinds:SetEnabled(self.Library, self.Flag, self.Enabled)
 
@@ -2845,23 +3892,84 @@ function Keybind:SetEnabled(enabled)
 	end
 
 	self:Refresh()
+	return self
+end
+
+function Keybind:Enable()
+	return self:SetEnabled(true)
+end
+
+function Keybind:Disable()
+	return self:SetEnabled(false)
+end
+
+function Keybind:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Keybind:Show()
+	return self:SetVisible(true)
+end
+
+function Keybind:Hide()
+	return self:SetVisible(false)
+end
+
+function Keybind:SetText(text)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(text or "")
+	self.Label.Text = self.Name
+	return self
+end
+
+function Keybind:SetCallback(callback)
+	self.Callback = typeof(callback) == "function" and callback or function() end
+	if self.RegistryEntry then
+		self.RegistryEntry.Callback = self.Callback
+	end
+	return self
+end
+
+function Keybind:Set(value, fireCallback)
+	return self:SetValue(value, fireCallback)
 end
 
 function Keybind:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	self.Button.BackgroundColor3 = theme.Background
 	self:Refresh()
+	return self
 end
 
 function Keybind:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
 	self.Context.Keybinds:Unregister(self.Library, self)
+	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 
 	if self.Library._listeningKeybind == self then
 		self.Library._listeningKeybind = nil
 	end
 
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Keybind
@@ -2872,6 +3980,7 @@ local Paragraph = {}
 Paragraph.__index = Paragraph
 
 function Paragraph.new(context, section, options)
+	options = options or {}
 	local text = options.Text or options.Content or options.Name or "Paragraph"
 	local self = setmetatable({
 		Context = context,
@@ -2902,22 +4011,77 @@ function Paragraph.new(context, section, options)
 end
 
 function Paragraph:Set(text)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Text = text
 	self.Instance.Text = text
+	return self
+end
+
+function Paragraph:GetValue()
+	return self.Text
+end
+
+function Paragraph:SetValue(text)
+	return self:Set(text)
+end
+
+function Paragraph:SetText(text)
+	return self:Set(text)
+end
+
+function Paragraph:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Context.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Paragraph:Show()
+	return self:SetVisible(true)
+end
+
+function Paragraph:Hide()
+	return self:SetVisible(false)
 end
 
 function Paragraph:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	self.Instance.TextColor3 = theme.MutedText
+	return self
 end
 
 function Paragraph:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Instance.TextTransparency = enabled == true and 0 or 0.45
+	return self
+end
+
+function Paragraph:Refresh()
+	return self:Set(self.Text)
 end
 
 function Paragraph:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Paragraph
@@ -2928,6 +4092,7 @@ local Divider = {}
 Divider.__index = Divider
 
 function Divider.new(context, section, options)
+	options = options or {}
 	local self = setmetatable({
 		Context = context,
 		Utility = context.Utility,
@@ -2961,20 +4126,63 @@ end
 
 function Divider:Set(visible)
 	self.Instance.Visible = visible == true
+	return self
+end
+
+function Divider:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Context.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Divider:Show()
+	return self:SetVisible(true)
+end
+
+function Divider:Hide()
+	return self:SetVisible(false)
+end
+
+function Divider:GetValue()
+	return nil
 end
 
 function Divider:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	self.Line.BackgroundColor3 = theme.Stroke
+	return self
 end
 
 function Divider:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Line.BackgroundTransparency = enabled == true and 0.2 or 0.75
+	return self
+end
+
+function Divider:Refresh()
+	return self:SetTheme(self.Theme)
 end
 
 function Divider:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Divider
@@ -2999,6 +4207,7 @@ local Config = requireModule("Core/Config")
 local Notify = requireModule("Core/Notify")
 local Tooltip = requireModule("Core/Tooltip")
 local Keybinds = requireModule("Core/Keybinds")
+local Dialog = requireModule("Core/Dialog")
 local Icons = requireModule("Assets/Icons")
 
 if Icons and Icons.Map then
@@ -3006,7 +4215,7 @@ if Icons and Icons.Map then
 end
 
 local MidasUI = {
-    Version = "1.3.0",
+    Version = "1.4.0",
     Flags = {},
     Keybinds = {},
     Themes = Theme.Registry,
@@ -3015,6 +4224,8 @@ local MidasUI = {
     _windows = {},
     _flagObjects = {},
     _dependencies = {},
+    _debug = false,
+    _warnings = {},
     _configFolder = "Midas",
     _configFile = "config.json",
     _windowSettings = {},
@@ -3029,6 +4240,7 @@ local Context = {
     Notify = Notify,
     Tooltip = Tooltip,
     Keybinds = Keybinds,
+    Dialog = Dialog,
     Elements = {},
 }
 
@@ -3046,22 +4258,82 @@ Context.Elements.Keybind = requireModule("Elements/Keybind")
 Context.Elements.Paragraph = requireModule("Elements/Paragraph")
 Context.Elements.Divider = requireModule("Elements/Divider")
 
+function MidasUI:_Warn(message)
+    if not self._debug then
+        return
+    end
+
+    local text = "[MidasUI] " .. tostring(message)
+    table.insert(self._warnings, text)
+    warn(text)
+end
+
+function MidasUI:SetDebug(enabled)
+    self._debug = enabled == true
+    return self
+end
+
+function MidasUI:GetDebugState()
+    if not self._debug then
+        return nil
+    end
+
+    local flagCount = 0
+    for _ in pairs(self.Flags) do
+        flagCount = flagCount + 1
+    end
+
+    local keybindCount = 0
+    for _ in pairs(self.Keybinds) do
+        keybindCount = keybindCount + 1
+    end
+
+    return {
+        Version = self.Version,
+        Theme = self.ThemeName,
+        WindowCount = #self._windows,
+        FlagCount = flagCount,
+        KeybindCount = keybindCount,
+        DependencyCount = #self._dependencies,
+        Warnings = table.clone(self._warnings),
+    }
+end
+
 function MidasUI:RegisterTheme(name, values)
-    Theme:Register(name, values)
+    local ok, err = Theme:Register(name, values)
+    if not ok then
+        self:_Warn(err)
+        return false, err
+    end
+
     self.Themes = Theme.Registry
+    return true
 end
 
 function MidasUI:SetTheme(nameOrTheme)
     local theme, themeName = Theme:Get(nameOrTheme)
+    if typeof(nameOrTheme) == "string" and not Theme.Registry[nameOrTheme] then
+        self:_Warn("Unknown theme '" .. nameOrTheme .. "', falling back to " .. themeName)
+    end
+
     self.Theme = theme
     self.ThemeName = themeName
 
     for _, window in ipairs(self._windows) do
         window:SetTheme(theme)
     end
+
+    Notify:SetTheme(Context)
+    Tooltip:SetTheme(Context)
+    Dialog:SetTheme(Context)
 end
 
 function MidasUI:CreateWindow(options)
+    if options ~= nil and typeof(options) ~= "table" then
+        self:_Warn("CreateWindow expected an options table")
+        options = {}
+    end
+
     options = options or {}
     self:SetTheme(options.Theme or self.ThemeName)
     return Context.Window.new(Context, options)
@@ -3073,6 +4345,7 @@ end
 
 function MidasUI:SetFlag(flag, value, fireCallback)
     if typeof(flag) ~= "string" or flag == "" then
+        self:_Warn("SetFlag ignored: flag must be a non-empty string")
         return
     end
 
@@ -3191,6 +4464,28 @@ function MidasUI:Notify(options)
     Notify:Show(Context, options or {})
 end
 
+function MidasUI:Dialog(options)
+    return Dialog:Show(Context, options or {})
+end
+
+function MidasUI:Info(options)
+    options = options or {}
+    options.Type = "Info"
+    return self:Dialog(options)
+end
+
+function MidasUI:Confirm(options)
+    options = options or {}
+    options.Type = "Confirm"
+    return self:Dialog(options)
+end
+
+function MidasUI:Prompt(options)
+    options = options or {}
+    options.Type = "Input"
+    return self:Dialog(options)
+end
+
 function MidasUI:_CleanupOverlays()
     if self._notifyGui then
         self._notifyGui:Destroy()
@@ -3209,6 +4504,12 @@ function MidasUI:_CleanupOverlays()
 
     if self._tooltipConnections then
         Utility:DisconnectAll(self._tooltipConnections)
+    end
+
+    Dialog:Close(Context)
+    if self._dialogGui then
+        self._dialogGui:Destroy()
+        self._dialogGui = nil
     end
 end
 

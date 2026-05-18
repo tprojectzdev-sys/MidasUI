@@ -10,6 +10,19 @@ local function snap(value, min, max, increment)
 end
 
 function Slider.new(context, section, options)
+	options = options or {}
+	local min = tonumber(options.Min) or 0
+	local max = tonumber(options.Max) or 100
+	if max < min then
+		min, max = max, min
+		context.Library:_Warn("Slider '" .. tostring(options.Name or "Slider") .. "' had Max below Min; values were swapped")
+	end
+
+	local increment = math.abs(tonumber(options.Increment) or 1)
+	if increment <= 0 then
+		increment = 1
+	end
+
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -18,10 +31,10 @@ function Slider.new(context, section, options)
 		Theme = context.Library.Theme,
 		Name = options.Name or "Slider",
 		Flag = options.Flag,
-		Min = tonumber(options.Min) or 0,
-		Max = tonumber(options.Max) or 100,
-		Increment = tonumber(options.Increment) or 1,
-		Value = tonumber(options.Default) or tonumber(options.Min) or 0,
+		Min = min,
+		Max = max,
+		Increment = increment,
+		Value = tonumber(options.Default) or min,
 		Callback = options.Callback or function() end,
 		Connections = {},
 		Dragging = false,
@@ -172,6 +185,10 @@ function Slider:GetValue()
 end
 
 function Slider:SetValue(value, fireCallback)
+	if self.Destroyed then
+		return self
+	end
+
 	local nextValue = snap(tonumber(value) or self.Min, self.Min, self.Max, self.Increment)
 	local changed = self.Value ~= nextValue
 	self.Value = nextValue
@@ -188,9 +205,15 @@ function Slider:SetValue(value, fireCallback)
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
 	end
+
+	return self
 end
 
 function Slider:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Enabled = enabled == true
 	self.Label.TextTransparency = self.Enabled and 0 or 0.45
 	self.ValueLabel.TextTransparency = self.Enabled and 0 or 0.45
@@ -202,20 +225,104 @@ function Slider:SetEnabled(enabled)
 		self.Dragging = false
 		self.Utility:Tween(self.Knob, 0.12, { Size = UDim2.fromOffset(16, 16) })
 	end
+	return self
+end
+
+function Slider:Enable()
+	return self:SetEnabled(true)
+end
+
+function Slider:Disable()
+	return self:SetEnabled(false)
+end
+
+function Slider:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Slider:Show()
+	return self:SetVisible(true)
+end
+
+function Slider:Hide()
+	return self:SetVisible(false)
+end
+
+function Slider:SetText(text)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(text or "")
+	self.Label.Text = self.Name
+	return self
+end
+
+function Slider:SetCallback(callback)
+	self.Callback = typeof(callback) == "function" and callback or function() end
+	return self
+end
+
+function Slider:Set(value, fireCallback)
+	return self:SetValue(value, fireCallback)
+end
+
+function Slider:SetRange(min, max, increment)
+	if self.Destroyed then
+		return self
+	end
+
+	min = tonumber(min) or self.Min
+	max = tonumber(max) or self.Max
+	if max < min then
+		min, max = max, min
+	end
+
+	self.Min = min
+	self.Max = max
+	self.Increment = math.max(math.abs(tonumber(increment) or self.Increment), 0.0001)
+	self:SetValue(self.Value, false)
+	return self
+end
+
+function Slider:Refresh()
+	if not self.Destroyed then
+		self:SetValue(self.Value, false)
+		self:SetEnabled(self.Enabled)
+	end
+	return self
 end
 
 function Slider:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	self.Label.TextColor3 = theme.Text
 	self.ValueLabel.TextColor3 = theme.Accent
 	self.Bar.BackgroundColor3 = theme.Background
 	self.Fill.BackgroundColor3 = theme.Accent
 	self.Knob.BackgroundColor3 = theme.Text
+	return self
 end
 
 function Slider:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
+	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Slider

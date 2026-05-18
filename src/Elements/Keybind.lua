@@ -133,6 +133,7 @@ function Keybind:Refresh()
 
 	self.Button.BackgroundTransparency = self.Enabled == false and 0.35 or 0
 	self.Label.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
+	return self
 end
 
 function Keybind:StartListening()
@@ -199,7 +200,14 @@ function Keybind:CaptureInput(keyCode)
 end
 
 function Keybind:SetValue(value)
+	if self.Destroyed then
+		return self
+	end
+
 	local keyCode = normalizeKeyCode(value)
+	if value ~= nil and not keyCode then
+		self.Library:_Warn("Keybind '" .. self.Name .. "' received an invalid key value")
+	end
 	self.Value = keyCode
 
 	if self.Flag then
@@ -208,9 +216,14 @@ function Keybind:SetValue(value)
 	else
 		self:Refresh()
 	end
+	return self
 end
 
 function Keybind:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Enabled = enabled == true
 	self.Context.Keybinds:SetEnabled(self.Library, self.Flag, self.Enabled)
 
@@ -219,23 +232,84 @@ function Keybind:SetEnabled(enabled)
 	end
 
 	self:Refresh()
+	return self
+end
+
+function Keybind:Enable()
+	return self:SetEnabled(true)
+end
+
+function Keybind:Disable()
+	return self:SetEnabled(false)
+end
+
+function Keybind:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Keybind:Show()
+	return self:SetVisible(true)
+end
+
+function Keybind:Hide()
+	return self:SetVisible(false)
+end
+
+function Keybind:SetText(text)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(text or "")
+	self.Label.Text = self.Name
+	return self
+end
+
+function Keybind:SetCallback(callback)
+	self.Callback = typeof(callback) == "function" and callback or function() end
+	if self.RegistryEntry then
+		self.RegistryEntry.Callback = self.Callback
+	end
+	return self
+end
+
+function Keybind:Set(value, fireCallback)
+	return self:SetValue(value, fireCallback)
 end
 
 function Keybind:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	self.Button.BackgroundColor3 = theme.Background
 	self:Refresh()
+	return self
 end
 
 function Keybind:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
 	self.Context.Keybinds:Unregister(self.Library, self)
+	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 
 	if self.Library._listeningKeybind == self then
 		self.Library._listeningKeybind = nil
 	end
 
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Keybind

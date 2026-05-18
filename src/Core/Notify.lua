@@ -130,4 +130,32 @@ function Notify:Show(context, options)
 	end)
 end
 
+function Notify:SetTheme(context)
+	local library = context.Library
+	local holder = library._notifyHolder
+	if not holder then
+		return
+	end
+
+	local theme = library.Theme
+	for _, frame in ipairs(holder:GetChildren()) do
+		if frame:IsA("Frame") and frame.Name == "Notification" then
+			frame.BackgroundColor3 = theme.Card
+			context.Utility:ApplyStrokeTheme(frame, theme.Stroke)
+			local title = frame:FindFirstChild("Title")
+			local content = frame:FindFirstChild("Content")
+			local accent = frame:FindFirstChild("Accent")
+			if title then
+				title.TextColor3 = theme.Text
+			end
+			if content then
+				content.TextColor3 = theme.MutedText
+			end
+			if accent then
+				accent.BackgroundColor3 = theme.Accent
+			end
+		end
+	end
+end
+
 return Notify

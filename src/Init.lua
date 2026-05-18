@@ -10,6 +10,7 @@ local Config = require(core:WaitForChild("Config"))
 local Notify = require(core:WaitForChild("Notify"))
 local Tooltip = require(core:WaitForChild("Tooltip"))
 local Keybinds = require(core:WaitForChild("Keybinds"))
+local Dialog = require(core:WaitForChild("Dialog"))
 local Icons = assetsFolder and require(assetsFolder:WaitForChild("Icons")) or nil
 
 if Icons and Icons.Map then
@@ -17,7 +18,7 @@ if Icons and Icons.Map then
 end
 
 local MidasUI = {
-	Version = "1.3.0",
+	Version = "1.4.0",
 	Flags = {},
 	Keybinds = {},
 	Themes = Theme.Registry,
@@ -26,6 +27,8 @@ local MidasUI = {
 	_windows = {},
 	_flagObjects = {},
 	_dependencies = {},
+	_debug = false,
+	_warnings = {},
 	_configFolder = "Midas",
 	_configFile = "config.json",
 	_windowSettings = {},
@@ -40,6 +43,7 @@ local Context = {
 	Notify = Notify,
 	Tooltip = Tooltip,
 	Keybinds = Keybinds,
+	Dialog = Dialog,
 	Elements = {},
 }
 
@@ -58,22 +62,82 @@ Context.Elements.Keybind = require(elementsFolder:WaitForChild("Keybind"))
 Context.Elements.Paragraph = require(elementsFolder:WaitForChild("Paragraph"))
 Context.Elements.Divider = require(elementsFolder:WaitForChild("Divider"))
 
+function MidasUI:_Warn(message)
+	if not self._debug then
+		return
+	end
+
+	local text = "[MidasUI] " .. tostring(message)
+	table.insert(self._warnings, text)
+	warn(text)
+end
+
+function MidasUI:SetDebug(enabled)
+	self._debug = enabled == true
+	return self
+end
+
+function MidasUI:GetDebugState()
+	if not self._debug then
+		return nil
+	end
+
+	local flagCount = 0
+	for _ in pairs(self.Flags) do
+		flagCount = flagCount + 1
+	end
+
+	local keybindCount = 0
+	for _ in pairs(self.Keybinds) do
+		keybindCount = keybindCount + 1
+	end
+
+	return {
+		Version = self.Version,
+		Theme = self.ThemeName,
+		WindowCount = #self._windows,
+		FlagCount = flagCount,
+		KeybindCount = keybindCount,
+		DependencyCount = #self._dependencies,
+		Warnings = table.clone(self._warnings),
+	}
+end
+
 function MidasUI:RegisterTheme(name, values)
-	Theme:Register(name, values)
+	local ok, err = Theme:Register(name, values)
+	if not ok then
+		self:_Warn(err)
+		return false, err
+	end
+
 	self.Themes = Theme.Registry
+	return true
 end
 
 function MidasUI:SetTheme(nameOrTheme)
 	local theme, themeName = Theme:Get(nameOrTheme)
+	if typeof(nameOrTheme) == "string" and not Theme.Registry[nameOrTheme] then
+		self:_Warn("Unknown theme '" .. nameOrTheme .. "', falling back to " .. themeName)
+	end
+
 	self.Theme = theme
 	self.ThemeName = themeName
 
 	for _, window in ipairs(self._windows) do
 		window:SetTheme(theme)
 	end
+
+	Notify:SetTheme(Context)
+	Tooltip:SetTheme(Context)
+	Dialog:SetTheme(Context)
 end
 
 function MidasUI:CreateWindow(options)
+	if options ~= nil and typeof(options) ~= "table" then
+		self:_Warn("CreateWindow expected an options table")
+		options = {}
+	end
+
 	options = options or {}
 	self:SetTheme(options.Theme or self.ThemeName)
 	return Context.Window.new(Context, options)
@@ -85,6 +149,7 @@ end
 
 function MidasUI:SetFlag(flag, value, fireCallback)
 	if typeof(flag) ~= "string" or flag == "" then
+		self:_Warn("SetFlag ignored: flag must be a non-empty string")
 		return
 	end
 
@@ -203,6 +268,28 @@ function MidasUI:Notify(options)
 	Notify:Show(Context, options or {})
 end
 
+function MidasUI:Dialog(options)
+	return Dialog:Show(Context, options or {})
+end
+
+function MidasUI:Info(options)
+	options = options or {}
+	options.Type = "Info"
+	return self:Dialog(options)
+end
+
+function MidasUI:Confirm(options)
+	options = options or {}
+	options.Type = "Confirm"
+	return self:Dialog(options)
+end
+
+function MidasUI:Prompt(options)
+	options = options or {}
+	options.Type = "Input"
+	return self:Dialog(options)
+end
+
 function MidasUI:_CleanupOverlays()
 	if self._notifyGui then
 		self._notifyGui:Destroy()
@@ -221,6 +308,12 @@ function MidasUI:_CleanupOverlays()
 
 	if self._tooltipConnections then
 		Utility:DisconnectAll(self._tooltipConnections)
+	end
+
+	Dialog:Close(Context)
+	if self._dialogGui then
+		self._dialogGui:Destroy()
+		self._dialogGui = nil
 	end
 end
 

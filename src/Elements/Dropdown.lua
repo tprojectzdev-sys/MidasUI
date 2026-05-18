@@ -2,6 +2,7 @@ local Dropdown = {}
 Dropdown.__index = Dropdown
 
 function Dropdown.new(context, section, options)
+	options = options or {}
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -20,6 +21,10 @@ function Dropdown.new(context, section, options)
 	}, Dropdown)
 
 	if self.Value == nil and self.Options[1] ~= nil then
+		self.Value = self.Options[1]
+	end
+	if self.Value ~= nil and not table.find(self.Options, self.Value) then
+		context.Library:_Warn("Dropdown '" .. tostring(self.Name) .. "' default was not in Options")
 		self.Value = self.Options[1]
 	end
 
@@ -200,6 +205,10 @@ function Dropdown:GetValue()
 end
 
 function Dropdown:SetExpanded(value, instant)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Expanded = value == true
 	local maxVisible = math.max(self.MaxVisibleOptions, 1)
 	local height = self.Expanded and math.min(#self.Options, maxVisible) * 32 + 8 or 0
@@ -215,9 +224,19 @@ function Dropdown:SetExpanded(value, instant)
 		self.Utility:Tween(self.List, 0.16, { Size = UDim2.new(1, 0, 0, height) })
 		self.Utility:Tween(self.Instance, 0.16, { Size = UDim2.new(1, 0, 0, frameHeight) })
 	end
+	return self
 end
 
 function Dropdown:SetValue(value, fireCallback)
+	if self.Destroyed then
+		return self
+	end
+
+	if value ~= nil and not table.find(self.Options, value) then
+		self.Library:_Warn("Dropdown '" .. self.Name .. "' ignored invalid value '" .. tostring(value) .. "'")
+		return self
+	end
+
 	local changed = self.Value ~= value
 	self.Value = value
 
@@ -236,9 +255,14 @@ function Dropdown:SetValue(value, fireCallback)
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
 	end
+	return self
 end
 
 function Dropdown:SetEnabled(enabled)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Enabled = enabled == true
 	self.Label.TextTransparency = self.Enabled and 0 or 0.45
 	self.ValueLabel.TextTransparency = self.Enabled and 0 or 0.45
@@ -247,9 +271,99 @@ function Dropdown:SetEnabled(enabled)
 	if not self.Enabled then
 		self:SetExpanded(false)
 	end
+	return self
+end
+
+function Dropdown:Enable()
+	return self:SetEnabled(true)
+end
+
+function Dropdown:Disable()
+	return self:SetEnabled(false)
+end
+
+function Dropdown:SetVisible(visible)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Library:_SetElementVisible(self, visible == true)
+	return self
+end
+
+function Dropdown:Show()
+	return self:SetVisible(true)
+end
+
+function Dropdown:Hide()
+	return self:SetVisible(false)
+end
+
+function Dropdown:SetText(text)
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(text or "")
+	self.Label.Text = self.Name
+	return self
+end
+
+function Dropdown:SetCallback(callback)
+	self.Callback = typeof(callback) == "function" and callback or function() end
+	return self
+end
+
+function Dropdown:Set(value, fireCallback)
+	return self:SetValue(value, fireCallback)
+end
+
+function Dropdown:SetOptions(options, defaultValue)
+	if self.Destroyed then
+		return self
+	end
+
+	if typeof(options) ~= "table" then
+		self.Library:_Warn("Dropdown '" .. self.Name .. "' SetOptions ignored: options must be a table")
+		return self
+	end
+
+	for _, item in ipairs(self.OptionButtons) do
+		if item.Button then
+			item.Button:Destroy()
+		end
+	end
+
+	table.clear(self.OptionButtons)
+	self.Options = options
+
+	for _, option in ipairs(self.Options) do
+		self:_addOption(option)
+	end
+
+	local nextValue = defaultValue
+	if nextValue == nil or not table.find(self.Options, nextValue) then
+		nextValue = self.Options[1]
+	end
+
+	self:SetValue(nextValue, false)
+	self:SetExpanded(false, true)
+	return self
+end
+
+function Dropdown:Refresh()
+	if not self.Destroyed then
+		self:SetValue(self.Value, false)
+		self:SetEnabled(self.Enabled)
+	end
+	return self
 end
 
 function Dropdown:SetTheme(theme)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Theme = theme
 	self.Label.TextColor3 = theme.Text
 	self.Button.BackgroundColor3 = theme.Background
@@ -263,16 +377,26 @@ function Dropdown:SetTheme(theme)
 	end
 
 	self:SetValue(self.Value, false)
+	return self
 end
 
 function Dropdown:Destroy()
+	if self.Destroyed then
+		return
+	end
+
+	self.Destroyed = true
+	self.Context.Flags:Unregister(self.Library, self.Flag, self)
+
 	if self.CanvasConnection then
 		self.CanvasConnection:Disconnect()
 		self.CanvasConnection = nil
 	end
 
 	self.Utility:DisconnectAll(self.Connections)
-	self.Instance:Destroy()
+	if self.Instance then
+		self.Instance:Destroy()
+	end
 end
 
 return Dropdown
