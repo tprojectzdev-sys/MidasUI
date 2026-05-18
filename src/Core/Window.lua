@@ -1,0 +1,260 @@
+local Window = {}
+Window.__index = Window
+
+function Window.new(context, options)
+	options = options or {}
+
+	local self = setmetatable({
+		Context = context,
+		Library = context.Library,
+		Utility = context.Utility,
+		Theme = context.Library.Theme,
+		Tabs = {},
+		Connections = {},
+		ActiveTab = nil,
+		Minimized = false,
+		Closed = false,
+		Title = options.Title or options.Name or "MidasUI",
+		Subtitle = options.Subtitle or "",
+		Icon = options.Icon or "crown",
+		SaveConfig = options.SaveConfig == true,
+	}, Window)
+
+	local library = self.Library
+	local utility = self.Utility
+	local theme = self.Theme
+	local size = options.Size or UDim2.fromOffset(620, 460)
+
+	library._configFolder = options.ConfigFolder or library._configFolder or "Midas"
+	library._configFile = options.ConfigFile or library._configFile or "config.json"
+	library._activeWindow = self
+	library._windowSettings = library._windowSettings or {}
+
+	local gui = utility:Create("ScreenGui", {
+		Name = "MidasUI",
+		IgnoreGuiInset = true,
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = utility:GetGuiParent(),
+	})
+
+	local main = utility:Create("Frame", {
+		Name = "Window",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = size,
+		BackgroundColor3 = theme.Background,
+		ClipsDescendants = true,
+		Parent = gui,
+	})
+	utility:Corner(main, 12)
+	utility:Stroke(main, theme.Stroke, 0.15)
+
+	local topbar = utility:Create("Frame", {
+		Name = "Topbar",
+		Size = UDim2.new(1, 0, 0, 56),
+		BackgroundColor3 = theme.Topbar,
+		Parent = main,
+	})
+
+	local icon = utility:Create("TextLabel", {
+		Name = "Icon",
+		Position = UDim2.fromOffset(16, 14),
+		Size = UDim2.fromOffset(28, 28),
+		BackgroundColor3 = theme.Accent,
+		Font = Enum.Font.GothamBold,
+		Text = utility:IconText(self.Icon),
+		TextColor3 = Color3.fromRGB(20, 18, 15),
+		TextSize = 15,
+		Parent = topbar,
+	})
+	utility:Corner(icon, 8)
+
+	local title = utility:Create("TextLabel", {
+		Name = "Title",
+		Position = UDim2.fromOffset(54, 9),
+		Size = UDim2.new(1, -150, 0, 24),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamSemibold,
+		Text = self.Title,
+		TextColor3 = theme.Text,
+		TextSize = 16,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = topbar,
+	})
+
+	local subtitle = utility:Create("TextLabel", {
+		Name = "Subtitle",
+		Position = UDim2.fromOffset(54, 31),
+		Size = UDim2.new(1, -150, 0, 16),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = self.Subtitle,
+		TextColor3 = theme.MutedText,
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = topbar,
+	})
+
+	local minimize = utility:Create("TextButton", {
+		Name = "Minimize",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -52, 0, 14),
+		Size = UDim2.fromOffset(28, 28),
+		BackgroundColor3 = theme.Card,
+		Font = Enum.Font.GothamBold,
+		Text = "-",
+		TextColor3 = theme.MutedText,
+		TextSize = 16,
+		AutoButtonColor = false,
+		Parent = topbar,
+	})
+	utility:Corner(minimize, 8)
+
+	local close = utility:Create("TextButton", {
+		Name = "Close",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -16, 0, 14),
+		Size = UDim2.fromOffset(28, 28),
+		BackgroundColor3 = theme.Card,
+		Font = Enum.Font.GothamBold,
+		Text = "x",
+		TextColor3 = theme.Danger,
+		TextSize = 14,
+		AutoButtonColor = false,
+		Parent = topbar,
+	})
+	utility:Corner(close, 8)
+
+	local sidebar = utility:Create("Frame", {
+		Name = "Sidebar",
+		Position = UDim2.fromOffset(0, 56),
+		Size = UDim2.new(0, 152, 1, -56),
+		BackgroundColor3 = theme.Sidebar,
+		Parent = main,
+	})
+
+	local tabList = utility:Create("Frame", {
+		Name = "TabList",
+		Position = UDim2.fromOffset(10, 12),
+		Size = UDim2.new(1, -20, 1, -24),
+		BackgroundTransparency = 1,
+		Parent = sidebar,
+	})
+	utility:List(tabList, 6)
+
+	local content = utility:Create("Frame", {
+		Name = "Content",
+		Position = UDim2.fromOffset(152, 56),
+		Size = UDim2.new(1, -152, 1, -56),
+		BackgroundTransparency = 1,
+		Parent = main,
+	})
+
+	self.Gui = gui
+	self.Main = main
+	self.Topbar = topbar
+	self.Sidebar = sidebar
+	self.TabList = tabList
+	self.Content = content
+	self._themeObjects = {
+		{ main, "BackgroundColor3", "Background" },
+		{ topbar, "BackgroundColor3", "Topbar" },
+		{ sidebar, "BackgroundColor3", "Sidebar" },
+		{ icon, "BackgroundColor3", "Accent" },
+		{ title, "TextColor3", "Text" },
+		{ subtitle, "TextColor3", "MutedText" },
+		{ minimize, "BackgroundColor3", "Card" },
+		{ minimize, "TextColor3", "MutedText" },
+		{ close, "BackgroundColor3", "Card" },
+		{ close, "TextColor3", "Danger" },
+	}
+
+	utility:MakeDraggable(topbar, main, self.Connections)
+
+	utility:Connect(self.Connections, minimize.MouseButton1Click, function()
+		self:SetMinimized(not self.Minimized)
+	end)
+
+	utility:Connect(self.Connections, close.MouseButton1Click, function()
+		self:Destroy()
+	end)
+
+	table.insert(library._windows, self)
+
+	if self.SaveConfig then
+		library:LoadConfig()
+	end
+
+	return self
+end
+
+function Window:CreateTab(options)
+	options = typeof(options) == "table" and options or { Name = tostring(options) }
+	local tab = self.Context.Tab.new(self.Context, self, options)
+	table.insert(self.Tabs, tab)
+
+	if not self.ActiveTab then
+		self:SelectTab(tab)
+	end
+
+	return tab
+end
+
+function Window:SelectTab(tab)
+	self.ActiveTab = tab
+
+	for _, item in ipairs(self.Tabs) do
+		item:SetActive(item == tab)
+	end
+end
+
+function Window:SetMinimized(value)
+	self.Minimized = value == true
+	self.Library._windowSettings.Minimized = self.Minimized
+
+	local targetSize = self.Minimized and UDim2.fromOffset(self.Main.AbsoluteSize.X, 56) or (self.Library._windowSettings.Size or self.Main.Size)
+	if not self.Minimized then
+		targetSize = self._restoreSize or targetSize
+	else
+		self._restoreSize = self.Main.Size
+	end
+
+	self.Utility:Tween(self.Main, 0.22, { Size = targetSize })
+	self.Sidebar.Visible = not self.Minimized
+	self.Content.Visible = not self.Minimized
+end
+
+function Window:SetTheme(theme)
+	self.Theme = theme
+
+	for _, binding in ipairs(self._themeObjects) do
+		local object, property, key = binding[1], binding[2], binding[3]
+		if object and object.Parent then
+			object[property] = theme[key]
+		end
+	end
+
+	for _, tab in ipairs(self.Tabs) do
+		tab:SetTheme(theme)
+	end
+end
+
+function Window:Destroy()
+	if self.Closed then
+		return
+	end
+
+	self.Closed = true
+	self.Utility:DisconnectAll(self.Connections)
+
+	if self.SaveConfig then
+		self.Library:SaveConfig()
+	end
+
+	if self.Gui then
+		self.Gui:Destroy()
+	end
+end
+
+return Window

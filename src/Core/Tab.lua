@@ -1,0 +1,120 @@
+local Tab = {}
+Tab.__index = Tab
+
+function Tab.new(context, window, options)
+	local self = setmetatable({
+		Context = context,
+		Window = window,
+		Library = context.Library,
+		Utility = context.Utility,
+		Theme = context.Library.Theme,
+		Name = options.Name or "Tab",
+		Icon = options.Icon or "",
+		Sections = {},
+		Connections = {},
+	}, Tab)
+
+	local theme = self.Theme
+	local utility = self.Utility
+
+	local button = utility:Create("TextButton", {
+		Name = self.Name .. "Tab",
+		Size = UDim2.new(1, 0, 0, 38),
+		BackgroundColor3 = theme.Card,
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium,
+		Text = "",
+		AutoButtonColor = false,
+		Parent = window.TabList,
+	})
+	utility:Corner(button, 8)
+
+	local icon = utility:Create("TextLabel", {
+		Name = "Icon",
+		Position = UDim2.fromOffset(10, 8),
+		Size = UDim2.fromOffset(22, 22),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = utility:IconText(self.Icon),
+		TextColor3 = theme.MutedText,
+		TextSize = 13,
+		Parent = button,
+	})
+
+	local label = utility:Create("TextLabel", {
+		Name = "Label",
+		Position = UDim2.fromOffset(38, 0),
+		Size = UDim2.new(1, -44, 1, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium,
+		Text = self.Name,
+		TextColor3 = theme.MutedText,
+		TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = button,
+	})
+
+	local page = utility:Create("ScrollingFrame", {
+		Name = self.Name .. "Page",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 3,
+		ScrollBarImageColor3 = theme.Accent,
+		CanvasSize = UDim2.fromOffset(0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		Visible = false,
+		Parent = window.Content,
+	})
+	utility:Padding(page, { X = 14, Y = 14 })
+	utility:List(page, 10)
+
+	self.Button = button
+	self.IconLabel = icon
+	self.Label = label
+	self.Page = page
+	self._themeObjects = {
+		{ button, "BackgroundColor3", "Card" },
+		{ icon, "TextColor3", "MutedText" },
+		{ label, "TextColor3", "MutedText" },
+	}
+
+	utility:Connect(self.Connections, button.MouseButton1Click, function()
+		window:SelectTab(self)
+	end)
+
+	return self
+end
+
+function Tab:CreateSection(name)
+	local section = self.Context.Section.new(self.Context, self, name)
+	table.insert(self.Sections, section)
+	return section
+end
+
+function Tab:SetActive(active)
+	self.Page.Visible = active
+	self.Button.BackgroundTransparency = active and 0 or 1
+	self.IconLabel.TextColor3 = active and self.Theme.Accent or self.Theme.MutedText
+	self.Label.TextColor3 = active and self.Theme.Text or self.Theme.MutedText
+end
+
+function Tab:SetTheme(theme)
+	self.Theme = theme
+	self.Page.ScrollBarImageColor3 = theme.Accent
+
+	for _, binding in ipairs(self._themeObjects) do
+		local object, property, key = binding[1], binding[2], binding[3]
+		if object and object.Parent then
+			object[property] = theme[key]
+		end
+	end
+
+	self:SetActive(self.Window.ActiveTab == self)
+
+	for _, section in ipairs(self.Sections) do
+		section:SetTheme(theme)
+	end
+end
+
+return Tab
