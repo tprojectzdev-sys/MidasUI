@@ -349,6 +349,10 @@ function Config:IsAvailable()
 end
 
 function Config:SerializeValue(value)
+	if typeof(value) == "EnumItem" and value.EnumType == Enum.KeyCode then
+		return value.Name
+	end
+
 	if typeof(value) == "EnumItem" then
 		return {
 			__MidasType = "EnumItem",
@@ -829,7 +833,7 @@ function Keybinds:Init(library)
 	library._keybindsReady = true
 	library._keybindConnections = library._keybindConnections or {}
 
-	table.insert(library._keybindConnections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	table.insert(library._keybindConnections, UserInputService.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.Keyboard then
 			return
 		end
@@ -840,19 +844,20 @@ function Keybinds:Init(library)
 			return
 		end
 
-		if gameProcessed or UserInputService:GetFocusedTextBox() then
+		if UserInputService:GetFocusedTextBox() then
 			return
 		end
 
-		for _, keybind in pairs(library.Keybinds) do
-			if keybind and keybind.Enabled ~= false and keybind.Value == input.KeyCode then
-				if keybind.Mode == "Hold" then
-					if not keybind._held then
-						keybind._held = true
-						keybind:Fire(true)
+		for _, bind in pairs(library.Keybinds) do
+			if bind.Enabled ~= false and bind.KeyCode ~= nil and bind.KeyCode == input.KeyCode then
+				if bind.Mode == "Hold" then
+					if not bind.Holding then
+						bind.Holding = true
+						task.spawn(bind.Callback, true, bind.KeyCode)
 					end
-				else
-					keybind:Fire(input.KeyCode)
+				elseif not bind.Holding then
+					bind.Holding = true
+					task.spawn(bind.Callback, bind.KeyCode)
 				end
 			end
 		end
@@ -863,14 +868,13 @@ function Keybinds:Init(library)
 			return
 		end
 
-		if UserInputService:GetFocusedTextBox() then
-			return
-		end
+		for _, bind in pairs(library.Keybinds) do
+			if bind.KeyCode ~= nil and bind.KeyCode == input.KeyCode and bind.Holding then
+				bind.Holding = false
 
-		for _, keybind in pairs(library.Keybinds) do
-			if keybind and keybind.Enabled ~= false and keybind.Mode == "Hold" and keybind.Value == input.KeyCode and keybind._held then
-				keybind._held = false
-				keybind:Fire(false)
+				if bind.Mode == "Hold" and bind.Enabled ~= false then
+					task.spawn(bind.Callback, false, bind.KeyCode)
+				end
 			end
 		end
 	end))
@@ -878,17 +882,91 @@ end
 
 function Keybinds:Register(library, keybind)
 	if not keybind.Flag then
-		return
+		return nil
 	end
 
 	self:Init(library)
-	library.Keybinds[keybind.Flag] = keybind
+
+	local entry = library.Keybinds[keybind.Flag]
+	if not entry then
+		entry = {
+			Flag = keybind.Flag,
+			KeyCode = nil,
+			Mode = keybind.Mode or "Toggle",
+			Callback = keybind.Callback or function() end,
+			Holding = false,
+			Listening = false,
+			Enabled = true,
+			SetVisual = function() end,
+			ClearVisual = function() end,
+		}
+		library.Keybinds[keybind.Flag] = entry
+	end
+
+	entry.Mode = keybind.Mode or entry.Mode or "Toggle"
+	entry.Callback = keybind.Callback or entry.Callback or function() end
+	entry.Element = keybind
+	entry.SetVisual = function(newKeyCode)
+		keybind:SetVisual(newKeyCode)
+	end
+	entry.ClearVisual = function()
+		keybind:ClearVisual()
+	end
+
+	keybind.RegistryEntry = entry
+	return entry
 end
 
 function Keybinds:Unregister(library, keybind)
-	if keybind.Flag and library.Keybinds[keybind.Flag] == keybind then
+	if not keybind.Flag then
+		return
+	end
+
+	local entry = library.Keybinds[keybind.Flag]
+	if entry and entry.Element == keybind then
+		if entry.Holding and entry.Mode == "Hold" and entry.KeyCode ~= nil and entry.Enabled ~= false then
+			task.spawn(entry.Callback, false, entry.KeyCode)
+		end
+
+		entry.Holding = false
 		library.Keybinds[keybind.Flag] = nil
 	end
+end
+
+function Keybinds:SetKeyCode(library, flag, keyCode)
+	local entry = flag and library.Keybinds[flag]
+	if not entry then
+		return
+	end
+
+	if entry.Holding and entry.Mode == "Hold" and entry.KeyCode ~= keyCode and entry.Enabled ~= false then
+		task.spawn(entry.Callback, false, entry.KeyCode)
+	end
+
+	entry.Holding = false
+	entry.KeyCode = keyCode
+
+	if keyCode then
+		entry.SetVisual(keyCode)
+	else
+		entry.ClearVisual()
+	end
+end
+
+function Keybinds:SetEnabled(library, flag, enabled)
+	local entry = flag and library.Keybinds[flag]
+	if not entry then
+		return
+	end
+
+	if enabled == false and entry.Holding then
+		if entry.Mode == "Hold" and entry.KeyCode ~= nil then
+			task.spawn(entry.Callback, false, entry.KeyCode)
+		end
+		entry.Holding = false
+	end
+
+	entry.Enabled = enabled == true
 end
 
 return Keybinds
@@ -2240,7 +2318,10 @@ local function normalizeKeyCode(value)
 		local ok, keyCode = pcall(function()
 			return Enum.KeyCode[name]
 		end)
-		return ok and keyCode or nil
+
+		if ok and keyCode ~= Enum.KeyCode.Unknown then
+			return keyCode
+		end
 	end
 
 	return nil
@@ -2252,6 +2333,8 @@ local function keyName(value)
 end
 
 function Keybind.new(context, section, options)
+	options = options or {}
+
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -2266,6 +2349,7 @@ function Keybind.new(context, section, options)
 		Connections = {},
 		Listening = false,
 		Enabled = true,
+		RegistryEntry = nil,
 	}, Keybind)
 
 	local theme = self.Theme
@@ -2332,18 +2416,54 @@ function Keybind:GetValue()
 	return self.Value
 end
 
+function Keybind:SetVisual(keyCode)
+	self.Button.Text = keyName(keyCode)
+	self.Button.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
+end
+
+function Keybind:ClearVisual()
+	self.Button.Text = "None"
+	self.Button.TextColor3 = self.Theme.MutedText
+end
+
+function Keybind:Refresh()
+	if self.Value then
+		self:SetVisual(self.Value)
+	else
+		self:ClearVisual()
+	end
+
+	self.Button.BackgroundTransparency = self.Enabled == false and 0.35 or 0
+	self.Label.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
+end
+
 function Keybind:StartListening()
+	if self.Library._listeningKeybind and self.Library._listeningKeybind ~= self then
+		self.Library._listeningKeybind:StopListening()
+	end
+
 	self.Listening = true
 	self.Library._listeningKeybind = self
+
+	if self.RegistryEntry then
+		self.RegistryEntry.Listening = true
+	end
+
 	self.Button.Text = "..."
 	self.Button.TextColor3 = self.Theme.Accent
 end
 
 function Keybind:StopListening()
 	self.Listening = false
+
+	if self.RegistryEntry then
+		self.RegistryEntry.Listening = false
+	end
+
 	if self.Library._listeningKeybind == self then
 		self.Library._listeningKeybind = nil
 	end
+
 	self:Refresh()
 end
 
@@ -2380,33 +2500,26 @@ function Keybind:CaptureInput(keyCode)
 	self:StopListening()
 end
 
-function Keybind:Fire(value)
-	task.spawn(self.Callback, value)
-end
-
-function Keybind:Refresh()
-	self.Button.Text = keyName(self.Value)
-	self.Button.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
-	self.Button.BackgroundTransparency = self.Enabled == false and 0.35 or 0
-	self.Label.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
-end
-
 function Keybind:SetValue(value)
-	self.Value = normalizeKeyCode(value)
-	self._held = false
+	local keyCode = normalizeKeyCode(value)
+	self.Value = keyCode
 
 	if self.Flag then
-		self.Library.Flags[self.Flag] = self.Value
+		self.Library.Flags[self.Flag] = keyCode
+		self.Context.Keybinds:SetKeyCode(self.Library, self.Flag, keyCode)
+	else
+		self:Refresh()
 	end
-
-	self:Refresh()
 end
 
 function Keybind:SetEnabled(enabled)
 	self.Enabled = enabled == true
+	self.Context.Keybinds:SetEnabled(self.Library, self.Flag, self.Enabled)
+
 	if not self.Enabled and self.Listening then
 		self:StopListening()
 	end
+
 	self:Refresh()
 end
 
@@ -2418,9 +2531,11 @@ end
 
 function Keybind:Destroy()
 	self.Context.Keybinds:Unregister(self.Library, self)
+
 	if self.Library._listeningKeybind == self then
 		self.Library._listeningKeybind = nil
 	end
+
 	self.Utility:DisconnectAll(self.Connections)
 	self.Instance:Destroy()
 end

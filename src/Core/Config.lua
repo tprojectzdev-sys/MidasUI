@@ -46,6 +46,10 @@ function Config:IsAvailable()
 end
 
 function Config:SerializeValue(value)
+	if typeof(value) == "EnumItem" and value.EnumType == Enum.KeyCode then
+		return value.Name
+	end
+
 	if typeof(value) == "EnumItem" then
 		return {
 			__MidasType = "EnumItem",

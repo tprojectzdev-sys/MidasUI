@@ -15,7 +15,10 @@ local function normalizeKeyCode(value)
 		local ok, keyCode = pcall(function()
 			return Enum.KeyCode[name]
 		end)
-		return ok and keyCode or nil
+
+		if ok and keyCode ~= Enum.KeyCode.Unknown then
+			return keyCode
+		end
 	end
 
 	return nil
@@ -27,6 +30,8 @@ local function keyName(value)
 end
 
 function Keybind.new(context, section, options)
+	options = options or {}
+
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -41,6 +46,7 @@ function Keybind.new(context, section, options)
 		Connections = {},
 		Listening = false,
 		Enabled = true,
+		RegistryEntry = nil,
 	}, Keybind)
 
 	local theme = self.Theme
@@ -107,18 +113,54 @@ function Keybind:GetValue()
 	return self.Value
 end
 
+function Keybind:SetVisual(keyCode)
+	self.Button.Text = keyName(keyCode)
+	self.Button.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
+end
+
+function Keybind:ClearVisual()
+	self.Button.Text = "None"
+	self.Button.TextColor3 = self.Theme.MutedText
+end
+
+function Keybind:Refresh()
+	if self.Value then
+		self:SetVisual(self.Value)
+	else
+		self:ClearVisual()
+	end
+
+	self.Button.BackgroundTransparency = self.Enabled == false and 0.35 or 0
+	self.Label.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
+end
+
 function Keybind:StartListening()
+	if self.Library._listeningKeybind and self.Library._listeningKeybind ~= self then
+		self.Library._listeningKeybind:StopListening()
+	end
+
 	self.Listening = true
 	self.Library._listeningKeybind = self
+
+	if self.RegistryEntry then
+		self.RegistryEntry.Listening = true
+	end
+
 	self.Button.Text = "..."
 	self.Button.TextColor3 = self.Theme.Accent
 end
 
 function Keybind:StopListening()
 	self.Listening = false
+
+	if self.RegistryEntry then
+		self.RegistryEntry.Listening = false
+	end
+
 	if self.Library._listeningKeybind == self then
 		self.Library._listeningKeybind = nil
 	end
+
 	self:Refresh()
 end
 
@@ -155,33 +197,26 @@ function Keybind:CaptureInput(keyCode)
 	self:StopListening()
 end
 
-function Keybind:Fire(value)
-	task.spawn(self.Callback, value)
-end
-
-function Keybind:Refresh()
-	self.Button.Text = keyName(self.Value)
-	self.Button.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
-	self.Button.BackgroundTransparency = self.Enabled == false and 0.35 or 0
-	self.Label.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
-end
-
 function Keybind:SetValue(value)
-	self.Value = normalizeKeyCode(value)
-	self._held = false
+	local keyCode = normalizeKeyCode(value)
+	self.Value = keyCode
 
 	if self.Flag then
-		self.Library.Flags[self.Flag] = self.Value
+		self.Library.Flags[self.Flag] = keyCode
+		self.Context.Keybinds:SetKeyCode(self.Library, self.Flag, keyCode)
+	else
+		self:Refresh()
 	end
-
-	self:Refresh()
 end
 
 function Keybind:SetEnabled(enabled)
 	self.Enabled = enabled == true
+	self.Context.Keybinds:SetEnabled(self.Library, self.Flag, self.Enabled)
+
 	if not self.Enabled and self.Listening then
 		self:StopListening()
 	end
+
 	self:Refresh()
 end
 
@@ -193,9 +228,11 @@ end
 
 function Keybind:Destroy()
 	self.Context.Keybinds:Unregister(self.Library, self)
+
 	if self.Library._listeningKeybind == self then
 		self.Library._listeningKeybind = nil
 	end
+
 	self.Utility:DisconnectAll(self.Connections)
 	self.Instance:Destroy()
 end

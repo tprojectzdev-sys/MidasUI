@@ -10,7 +10,7 @@ function Keybinds:Init(library)
 	library._keybindsReady = true
 	library._keybindConnections = library._keybindConnections or {}
 
-	table.insert(library._keybindConnections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	table.insert(library._keybindConnections, UserInputService.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.Keyboard then
 			return
 		end
@@ -21,19 +21,20 @@ function Keybinds:Init(library)
 			return
 		end
 
-		if gameProcessed or UserInputService:GetFocusedTextBox() then
+		if UserInputService:GetFocusedTextBox() then
 			return
 		end
 
-		for _, keybind in pairs(library.Keybinds) do
-			if keybind and keybind.Enabled ~= false and keybind.Value == input.KeyCode then
-				if keybind.Mode == "Hold" then
-					if not keybind._held then
-						keybind._held = true
-						keybind:Fire(true)
+		for _, bind in pairs(library.Keybinds) do
+			if bind.Enabled ~= false and bind.KeyCode ~= nil and bind.KeyCode == input.KeyCode then
+				if bind.Mode == "Hold" then
+					if not bind.Holding then
+						bind.Holding = true
+						task.spawn(bind.Callback, true, bind.KeyCode)
 					end
-				else
-					keybind:Fire(input.KeyCode)
+				elseif not bind.Holding then
+					bind.Holding = true
+					task.spawn(bind.Callback, bind.KeyCode)
 				end
 			end
 		end
@@ -44,14 +45,13 @@ function Keybinds:Init(library)
 			return
 		end
 
-		if UserInputService:GetFocusedTextBox() then
-			return
-		end
+		for _, bind in pairs(library.Keybinds) do
+			if bind.KeyCode ~= nil and bind.KeyCode == input.KeyCode and bind.Holding then
+				bind.Holding = false
 
-		for _, keybind in pairs(library.Keybinds) do
-			if keybind and keybind.Enabled ~= false and keybind.Mode == "Hold" and keybind.Value == input.KeyCode and keybind._held then
-				keybind._held = false
-				keybind:Fire(false)
+				if bind.Mode == "Hold" and bind.Enabled ~= false then
+					task.spawn(bind.Callback, false, bind.KeyCode)
+				end
 			end
 		end
 	end))
@@ -59,17 +59,91 @@ end
 
 function Keybinds:Register(library, keybind)
 	if not keybind.Flag then
-		return
+		return nil
 	end
 
 	self:Init(library)
-	library.Keybinds[keybind.Flag] = keybind
+
+	local entry = library.Keybinds[keybind.Flag]
+	if not entry then
+		entry = {
+			Flag = keybind.Flag,
+			KeyCode = nil,
+			Mode = keybind.Mode or "Toggle",
+			Callback = keybind.Callback or function() end,
+			Holding = false,
+			Listening = false,
+			Enabled = true,
+			SetVisual = function() end,
+			ClearVisual = function() end,
+		}
+		library.Keybinds[keybind.Flag] = entry
+	end
+
+	entry.Mode = keybind.Mode or entry.Mode or "Toggle"
+	entry.Callback = keybind.Callback or entry.Callback or function() end
+	entry.Element = keybind
+	entry.SetVisual = function(newKeyCode)
+		keybind:SetVisual(newKeyCode)
+	end
+	entry.ClearVisual = function()
+		keybind:ClearVisual()
+	end
+
+	keybind.RegistryEntry = entry
+	return entry
 end
 
 function Keybinds:Unregister(library, keybind)
-	if keybind.Flag and library.Keybinds[keybind.Flag] == keybind then
+	if not keybind.Flag then
+		return
+	end
+
+	local entry = library.Keybinds[keybind.Flag]
+	if entry and entry.Element == keybind then
+		if entry.Holding and entry.Mode == "Hold" and entry.KeyCode ~= nil and entry.Enabled ~= false then
+			task.spawn(entry.Callback, false, entry.KeyCode)
+		end
+
+		entry.Holding = false
 		library.Keybinds[keybind.Flag] = nil
 	end
+end
+
+function Keybinds:SetKeyCode(library, flag, keyCode)
+	local entry = flag and library.Keybinds[flag]
+	if not entry then
+		return
+	end
+
+	if entry.Holding and entry.Mode == "Hold" and entry.KeyCode ~= keyCode and entry.Enabled ~= false then
+		task.spawn(entry.Callback, false, entry.KeyCode)
+	end
+
+	entry.Holding = false
+	entry.KeyCode = keyCode
+
+	if keyCode then
+		entry.SetVisual(keyCode)
+	else
+		entry.ClearVisual()
+	end
+end
+
+function Keybinds:SetEnabled(library, flag, enabled)
+	local entry = flag and library.Keybinds[flag]
+	if not entry then
+		return
+	end
+
+	if enabled == false and entry.Holding then
+		if entry.Mode == "Hold" and entry.KeyCode ~= nil then
+			task.spawn(entry.Callback, false, entry.KeyCode)
+		end
+		entry.Holding = false
+	end
+
+	entry.Enabled = enabled == true
 end
 
 return Keybinds
