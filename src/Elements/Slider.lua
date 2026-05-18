@@ -25,6 +25,7 @@ function Slider.new(context, section, options)
 		Callback = options.Callback or function() end,
 		Connections = {},
 		Dragging = false,
+		Enabled = true,
 	}, Slider)
 
 	local theme = self.Theme
@@ -99,6 +100,10 @@ function Slider.new(context, section, options)
 	self.Knob = knob
 
 	local function updateFromPosition(x)
+		if self.Enabled == false then
+			return
+		end
+
 		local ratio = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
 		local value = snap(self.Min + ((self.Max - self.Min) * ratio), self.Min, self.Max, self.Increment)
 		if self.Flag then
@@ -109,6 +114,10 @@ function Slider.new(context, section, options)
 	end
 
 	utility:Connect(self.Connections, bar.InputBegan, function(input)
+		if self.Enabled == false then
+			return
+		end
+
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			self.Dragging = true
 			updateFromPosition(input.Position.X)
@@ -133,6 +142,7 @@ function Slider.new(context, section, options)
 
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
+	self.Library:_BindElement(self, options)
 
 	return self
 end
@@ -157,6 +167,19 @@ function Slider:SetValue(value, fireCallback)
 
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
+	end
+end
+
+function Slider:SetEnabled(enabled)
+	self.Enabled = enabled == true
+	self.Label.TextTransparency = self.Enabled and 0 or 0.45
+	self.ValueLabel.TextTransparency = self.Enabled and 0 or 0.45
+	self.Bar.BackgroundTransparency = self.Enabled and 0 or 0.35
+	self.Fill.BackgroundTransparency = self.Enabled and 0 or 0.35
+	self.Knob.BackgroundTransparency = self.Enabled and 0 or 0.35
+
+	if not self.Enabled then
+		self.Dragging = false
 	end
 end
 

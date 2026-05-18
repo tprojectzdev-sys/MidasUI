@@ -15,6 +15,7 @@ function Dropdown.new(context, section, options)
 		Callback = options.Callback or function() end,
 		Connections = {},
 		Expanded = false,
+		Enabled = true,
 	}, Dropdown)
 
 	if self.Value == nil and self.Options[1] ~= nil then
@@ -108,12 +109,17 @@ function Dropdown.new(context, section, options)
 	end
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
+		if self.Enabled == false then
+			return
+		end
+
 		self:SetExpanded(not self.Expanded)
 	end)
 
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
 	self:SetExpanded(false, true)
+	self.Library:_BindElement(self, options)
 
 	return self
 end
@@ -138,6 +144,10 @@ function Dropdown:_addOption(option)
 	utility:Corner(button, 6)
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
+		if self.Enabled == false then
+			return
+		end
+
 		if self.Flag then
 			self.Library:SetFlag(self.Flag, option, true)
 		else
@@ -186,6 +196,17 @@ function Dropdown:SetValue(value, fireCallback)
 
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
+	end
+end
+
+function Dropdown:SetEnabled(enabled)
+	self.Enabled = enabled == true
+	self.Label.TextTransparency = self.Enabled and 0 or 0.45
+	self.ValueLabel.TextTransparency = self.Enabled and 0 or 0.45
+	self.Button.BackgroundTransparency = self.Enabled and 0 or 0.35
+
+	if not self.Enabled then
+		self:SetExpanded(false)
 	end
 end
 

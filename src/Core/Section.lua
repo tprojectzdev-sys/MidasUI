@@ -80,6 +80,10 @@ function Section:CreateInput(options)
 	return self:_createElement("Input", options)
 end
 
+function Section:CreateKeybind(options)
+	return self:_createElement("Keybind", options)
+end
+
 function Section:CreateParagraph(options)
 	if typeof(options) == "string" then
 		options = { Text = options }

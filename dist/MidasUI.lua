@@ -1,7 +1,32 @@
--- MidasUI V1.1 single-file bundle
+-- MidasUI V1.2 single-file bundle
 -- Generated from src modules. Edit src/ first, then rebuild the bundle.
 local ModuleCache = {}
 local ModuleSources = {}
+ModuleSources["Assets/Icons"] = function()
+local Icons = {}
+
+Icons.Map = {
+	home = "H",
+	settings = "S",
+	user = "U",
+	shield = "D",
+	sword = "W",
+	crown = "C",
+	search = "?",
+	warning = "!",
+	info = "i",
+	x = "x",
+	close = "x",
+	minus = "-",
+	plus = "+",
+	check = "Y",
+	bell = "B",
+	menu = "M",
+}
+
+return Icons
+
+end
 ModuleSources["Core/Utility"] = function()
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -13,10 +38,18 @@ Utility.IconGlyphs = {
 	home = "H",
 	settings = "S",
 	user = "U",
+	shield = "D",
+	sword = "W",
+	search = "?",
+	warning = "!",
+	info = "i",
 	bell = "B",
 	menu = "M",
+	x = "x",
 	close = "X",
 	minus = "-",
+	plus = "+",
+	check = "Y",
 }
 
 function Utility:Create(className, properties, children)
@@ -240,6 +273,10 @@ function Flags:Register(library, flag, element)
 	else
 		library.Flags[flag] = element:GetValue()
 	end
+
+	if library._RefreshDependencies then
+		library:_RefreshDependencies(flag)
+	end
 end
 
 function Flags:Get(library, flag)
@@ -253,6 +290,10 @@ function Flags:Set(library, flag, value, fireCallback)
 		element:SetValue(value, fireCallback ~= false)
 	else
 		library.Flags[flag] = value
+	end
+
+	if library._RefreshDependencies then
+		library:_RefreshDependencies(flag)
 	end
 end
 
@@ -277,12 +318,28 @@ local function fileFunctions()
 		isfile = callable("isfile"),
 		makefolder = callable("makefolder"),
 		isfolder = callable("isfolder"),
+		listfiles = callable("listfiles"),
+		delfile = callable("delfile"),
+		deletefile = callable("deletefile"),
 	}
 end
 
-function Config:Path(library)
+function Config:SanitizeProfile(profile)
+	local name = tostring(profile or "default")
+	name = string.gsub(name, "[^%w_%-]", "_")
+	name = string.gsub(name, "_+", "_")
+
+	if name == "" or name == "_" then
+		name = "default"
+	end
+
+	return name
+end
+
+function Config:Path(library, profile)
 	local folder = library._configFolder or "MidasUI"
-	local fileName = library._configFile or "config.json"
+	local profileName = self:SanitizeProfile(profile)
+	local fileName = profileName .. ".json"
 	return folder, folder .. "/" .. fileName
 end
 
@@ -291,9 +348,56 @@ function Config:IsAvailable()
 	return files.writefile ~= nil and files.readfile ~= nil and files.isfile ~= nil
 end
 
-function Config:Save(library)
+function Config:SerializeValue(value)
+	if typeof(value) == "EnumItem" then
+		return {
+			__MidasType = "EnumItem",
+			EnumType = tostring(value.EnumType),
+			Name = value.Name,
+		}
+	end
+
+	if typeof(value) == "table" then
+		local serialized = {}
+		for key, child in pairs(value) do
+			serialized[key] = self:SerializeValue(child)
+		end
+		return serialized
+	end
+
+	return value
+end
+
+function Config:DeserializeValue(value)
+	if typeof(value) == "table" then
+		if value.__MidasType == "EnumItem" and value.EnumType == "Enum.KeyCode" and typeof(value.Name) == "string" then
+			local ok, keyCode = pcall(function()
+				return Enum.KeyCode[value.Name]
+			end)
+			return ok and keyCode or nil
+		end
+
+		local decoded = {}
+		for key, child in pairs(value) do
+			decoded[key] = self:DeserializeValue(child)
+		end
+		return decoded
+	end
+
+	return value
+end
+
+function Config:SerializeFlags(flags)
+	local serialized = {}
+	for flag, value in pairs(flags or {}) do
+		serialized[flag] = self:SerializeValue(value)
+	end
+	return serialized
+end
+
+function Config:Save(library, profile)
 	local files = fileFunctions()
-	if not (files.writefile and files.readfile and files.isfile) then
+	if not files.writefile then
 		return false, "File functions are not available"
 	end
 
@@ -309,7 +413,7 @@ function Config:Save(library)
 		}
 	end
 
-	local folder, path = self:Path(library)
+	local folder, path = self:Path(library, profile)
 	if files.makefolder then
 		local ok = true
 		if files.isfolder then
@@ -328,7 +432,7 @@ function Config:Save(library)
 	local payload = {
 		Version = library.Version,
 		Theme = library.ThemeName,
-		Flags = library.Flags,
+		Flags = self:SerializeFlags(library.Flags),
 		Window = library._windowSettings or {},
 	}
 
@@ -340,17 +444,28 @@ function Config:Save(library)
 	return ok, err
 end
 
-function Config:Load(library)
+function Config:Load(library, profile)
 	local files = fileFunctions()
 	if not (files.readfile and files.isfile) then
 		return false, "File functions are not available"
 	end
 
-	local _, path = self:Path(library)
+	local folder, path = self:Path(library, profile)
 	local exists = false
 	pcall(function()
 		exists = files.isfile(path)
 	end)
+
+	if not exists and profile == nil then
+		local legacyPath = folder .. "/" .. (library._configFile or "config.json")
+		pcall(function()
+			exists = files.isfile(legacyPath)
+		end)
+
+		if exists then
+			path = legacyPath
+		end
+	end
 
 	if not exists then
 		return false, "Config file does not exist"
@@ -366,7 +481,7 @@ function Config:Load(library)
 
 	if typeof(decoded.Flags) == "table" then
 		for flag, value in pairs(decoded.Flags) do
-			library:SetFlag(flag, value, false)
+			library:SetFlag(flag, self:DeserializeValue(value), false)
 		end
 	end
 
@@ -395,6 +510,57 @@ function Config:Load(library)
 	end
 
 	return true
+end
+
+function Config:Delete(library, profile)
+	local files = fileFunctions()
+	local delete = files.delfile or files.deletefile
+	if not (files.isfile and delete) then
+		return false, "Delete file function is not available"
+	end
+
+	local _, path = self:Path(library, profile)
+	local exists = false
+	pcall(function()
+		exists = files.isfile(path)
+	end)
+
+	if not exists then
+		return false, "Config file does not exist"
+	end
+
+	local ok, err = pcall(function()
+		delete(path)
+	end)
+
+	return ok, err
+end
+
+function Config:List(library)
+	local files = fileFunctions()
+	if not files.listfiles then
+		return {}
+	end
+
+	local folder = library._configFolder or "MidasUI"
+	local ok, results = pcall(function()
+		return files.listfiles(folder)
+	end)
+
+	if not ok or typeof(results) ~= "table" then
+		return {}
+	end
+
+	local profiles = {}
+	for _, path in ipairs(results) do
+		local name = tostring(path):match("([^/\\]+)%.json$")
+		if name then
+			table.insert(profiles, name)
+		end
+	end
+
+	table.sort(profiles)
+	return profiles
 end
 
 return Config
@@ -512,6 +678,220 @@ function Notify:Show(context, options)
 end
 
 return Notify
+
+end
+ModuleSources["Core/Tooltip"] = function()
+local UserInputService = game:GetService("UserInputService")
+
+local Tooltip = {}
+
+function Tooltip:Init(context)
+	local library = context.Library
+	local utility = context.Utility
+
+	if library._tooltipGui then
+		return
+	end
+
+	local gui = utility:Create("ScreenGui", {
+		Name = "MidasUI_Tooltip",
+		IgnoreGuiInset = true,
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = utility:GetGuiParent(),
+	})
+
+	local frame = utility:Create("Frame", {
+		Name = "Tooltip",
+		Size = UDim2.fromOffset(220, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = library.Theme.Card,
+		BackgroundTransparency = 0.02,
+		Visible = false,
+		ZIndex = 1000,
+		Parent = gui,
+	})
+	utility:Corner(frame, 8)
+	utility:Stroke(frame, library.Theme.Stroke, 0.25)
+	utility:Padding(frame, { X = 10, Y = 8 })
+
+	local label = utility:Create("TextLabel", {
+		Name = "Text",
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = "",
+		TextColor3 = library.Theme.Text,
+		TextSize = 12,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		ZIndex = 1001,
+		Parent = frame,
+	})
+
+	library._tooltipGui = gui
+	library._tooltipFrame = frame
+	library._tooltipLabel = label
+	library._tooltipConnections = library._tooltipConnections or {}
+
+	utility:Connect(library._tooltipConnections, UserInputService.InputChanged, function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement and frame.Visible then
+			self:Position(context, input.Position)
+		end
+	end)
+end
+
+function Tooltip:Position(context, position)
+	local library = context.Library
+	local frame = library._tooltipFrame
+	if not frame then
+		return
+	end
+
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+	local width = frame.AbsoluteSize.X > 0 and frame.AbsoluteSize.X or 220
+	local height = frame.AbsoluteSize.Y > 0 and frame.AbsoluteSize.Y or 42
+	local maxX = math.max(8, viewport.X - width - 8)
+	local maxY = math.max(8, viewport.Y - height - 8)
+	local x = math.clamp(position.X + 14, 8, maxX)
+	local y = math.clamp(position.Y + 18, 8, maxY)
+
+	frame.Position = UDim2.fromOffset(x, y)
+end
+
+function Tooltip:Show(context, text)
+	if not text or text == "" then
+		return
+	end
+
+	self:Init(context)
+
+	local library = context.Library
+	local frame = library._tooltipFrame
+	local label = library._tooltipLabel
+
+	frame.BackgroundColor3 = library.Theme.Card
+	label.TextColor3 = library.Theme.Text
+	label.Text = tostring(text)
+	frame.Visible = true
+	frame.BackgroundTransparency = 1
+	context.Utility:Tween(frame, 0.12, { BackgroundTransparency = 0.02 })
+	self:Position(context, UserInputService:GetMouseLocation())
+end
+
+function Tooltip:Hide(context)
+	local library = context.Library
+	local frame = library._tooltipFrame
+	if frame then
+		frame.Visible = false
+	end
+end
+
+function Tooltip:Bind(context, element, target, text)
+	if not text or text == "" or not target then
+		return
+	end
+
+	self:Init(context)
+
+	element.Connections = element.Connections or {}
+	context.Utility:Connect(element.Connections, target.MouseEnter, function()
+		self:Show(context, text)
+	end)
+
+	context.Utility:Connect(element.Connections, target.MouseLeave, function()
+		self:Hide(context)
+	end)
+
+	context.Utility:Connect(element.Connections, target.AncestryChanged, function(_, parent)
+		if not parent then
+			self:Hide(context)
+		end
+	end)
+end
+
+return Tooltip
+
+end
+ModuleSources["Core/Keybinds"] = function()
+local UserInputService = game:GetService("UserInputService")
+
+local Keybinds = {}
+
+function Keybinds:Init(library)
+	if library._keybindsReady then
+		return
+	end
+
+	library._keybindsReady = true
+	library._keybindConnections = library._keybindConnections or {}
+
+	table.insert(library._keybindConnections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then
+			return
+		end
+
+		local listening = library._listeningKeybind
+		if listening then
+			listening:CaptureInput(input.KeyCode)
+			return
+		end
+
+		if gameProcessed or UserInputService:GetFocusedTextBox() then
+			return
+		end
+
+		for _, keybind in pairs(library.Keybinds) do
+			if keybind and keybind.Enabled ~= false and keybind.Value == input.KeyCode then
+				if keybind.Mode == "Hold" then
+					if not keybind._held then
+						keybind._held = true
+						keybind:Fire(true)
+					end
+				else
+					keybind:Fire(input.KeyCode)
+				end
+			end
+		end
+	end))
+
+	table.insert(library._keybindConnections, UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then
+			return
+		end
+
+		if UserInputService:GetFocusedTextBox() then
+			return
+		end
+
+		for _, keybind in pairs(library.Keybinds) do
+			if keybind and keybind.Enabled ~= false and keybind.Mode == "Hold" and keybind.Value == input.KeyCode and keybind._held then
+				keybind._held = false
+				keybind:Fire(false)
+			end
+		end
+	end))
+end
+
+function Keybinds:Register(library, keybind)
+	if not keybind.Flag then
+		return
+	end
+
+	self:Init(library)
+	library.Keybinds[keybind.Flag] = keybind
+end
+
+function Keybinds:Unregister(library, keybind)
+	if keybind.Flag and library.Keybinds[keybind.Flag] == keybind then
+		library.Keybinds[keybind.Flag] = nil
+	end
+end
+
+return Keybinds
 
 end
 ModuleSources["Core/Window"] = function()
@@ -763,10 +1143,31 @@ function Window:Destroy()
 	end
 
 	self.Closed = true
-	self.Utility:DisconnectAll(self.Connections)
 
 	if self.SaveConfig then
 		self.Library:SaveConfig()
+	end
+
+	if self.Context.Tooltip then
+		self.Context.Tooltip:Hide(self.Context)
+	end
+
+	for _, tab in ipairs(self.Tabs) do
+		for _, section in ipairs(tab.Sections) do
+			for _, element in ipairs(section.Elements) do
+				if element.Destroy then
+					element:Destroy()
+				end
+			end
+		end
+	end
+
+	self.Utility:DisconnectAll(self.Connections)
+
+	for index = #self.Library._windows, 1, -1 do
+		if self.Library._windows[index] == self then
+			table.remove(self.Library._windows, index)
+		end
 	end
 
 	if self.Gui then
@@ -983,6 +1384,10 @@ function Section:CreateInput(options)
 	return self:_createElement("Input", options)
 end
 
+function Section:CreateKeybind(options)
+	return self:_createElement("Keybind", options)
+end
+
 function Section:CreateParagraph(options)
 	if typeof(options) == "string" then
 		options = { Text = options }
@@ -1033,6 +1438,7 @@ function Button.new(context, section, options)
 		Name = options.Name or options.Text or "Button",
 		Callback = options.Callback or options.Func or function() end,
 		Connections = {},
+		Enabled = true,
 	}, Button)
 
 	local theme = self.Theme
@@ -1059,18 +1465,35 @@ function Button.new(context, section, options)
 	}
 
 	utility:Connect(self.Connections, button.MouseEnter, function()
+		if self.Enabled == false then
+			return
+		end
 		utility:Tween(button, 0.14, { BackgroundColor3 = self.Theme.Topbar })
 	end)
 
 	utility:Connect(self.Connections, button.MouseLeave, function()
+		if self.Enabled == false then
+			return
+		end
 		utility:Tween(button, 0.14, { BackgroundColor3 = self.Theme.Background })
 	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
+		if self.Enabled == false then
+			return
+		end
 		task.spawn(self.Callback)
 	end)
 
+	self.Library:_BindElement(self, options)
+
 	return self
+end
+
+function Button:SetEnabled(enabled)
+	self.Enabled = enabled == true
+	self.Instance.TextTransparency = self.Enabled and 0 or 0.45
+	self.Instance.BackgroundTransparency = self.Enabled and 0 or 0.35
 end
 
 function Button:SetTheme(theme)
@@ -1105,6 +1528,7 @@ function Toggle.new(context, section, options)
 		Value = options.Default == true,
 		Callback = options.Callback or function() end,
 		Connections = {},
+		Enabled = true,
 	}, Toggle)
 
 	local theme = self.Theme
@@ -1160,6 +1584,10 @@ function Toggle.new(context, section, options)
 	}
 
 	utility:Connect(self.Connections, row.MouseButton1Click, function()
+		if self.Enabled == false then
+			return
+		end
+
 		if self.Flag then
 			self.Library:SetFlag(self.Flag, not self.Value, true)
 		else
@@ -1169,6 +1597,7 @@ function Toggle.new(context, section, options)
 
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
+	self.Library:_BindElement(self, options)
 
 	return self
 end
@@ -1198,6 +1627,13 @@ function Toggle:SetValue(value, fireCallback)
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
 	end
+end
+
+function Toggle:SetEnabled(enabled)
+	self.Enabled = enabled == true
+	self.Label.TextTransparency = self.Enabled and 0 or 0.45
+	self.Track.BackgroundTransparency = self.Enabled and 0 or 0.35
+	self.Knob.BackgroundTransparency = self.Enabled and 0 or 0.35
 end
 
 function Toggle:SetTheme(theme)
@@ -1245,6 +1681,7 @@ function Slider.new(context, section, options)
 		Callback = options.Callback or function() end,
 		Connections = {},
 		Dragging = false,
+		Enabled = true,
 	}, Slider)
 
 	local theme = self.Theme
@@ -1319,6 +1756,10 @@ function Slider.new(context, section, options)
 	self.Knob = knob
 
 	local function updateFromPosition(x)
+		if self.Enabled == false then
+			return
+		end
+
 		local ratio = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
 		local value = snap(self.Min + ((self.Max - self.Min) * ratio), self.Min, self.Max, self.Increment)
 		if self.Flag then
@@ -1329,6 +1770,10 @@ function Slider.new(context, section, options)
 	end
 
 	utility:Connect(self.Connections, bar.InputBegan, function(input)
+		if self.Enabled == false then
+			return
+		end
+
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			self.Dragging = true
 			updateFromPosition(input.Position.X)
@@ -1353,6 +1798,7 @@ function Slider.new(context, section, options)
 
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
+	self.Library:_BindElement(self, options)
 
 	return self
 end
@@ -1377,6 +1823,19 @@ function Slider:SetValue(value, fireCallback)
 
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
+	end
+end
+
+function Slider:SetEnabled(enabled)
+	self.Enabled = enabled == true
+	self.Label.TextTransparency = self.Enabled and 0 or 0.45
+	self.ValueLabel.TextTransparency = self.Enabled and 0 or 0.45
+	self.Bar.BackgroundTransparency = self.Enabled and 0 or 0.35
+	self.Fill.BackgroundTransparency = self.Enabled and 0 or 0.35
+	self.Knob.BackgroundTransparency = self.Enabled and 0 or 0.35
+
+	if not self.Enabled then
+		self.Dragging = false
 	end
 end
 
@@ -1415,6 +1874,7 @@ function Dropdown.new(context, section, options)
 		Callback = options.Callback or function() end,
 		Connections = {},
 		Expanded = false,
+		Enabled = true,
 	}, Dropdown)
 
 	if self.Value == nil and self.Options[1] ~= nil then
@@ -1508,12 +1968,17 @@ function Dropdown.new(context, section, options)
 	end
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
+		if self.Enabled == false then
+			return
+		end
+
 		self:SetExpanded(not self.Expanded)
 	end)
 
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
 	self:SetExpanded(false, true)
+	self.Library:_BindElement(self, options)
 
 	return self
 end
@@ -1538,6 +2003,10 @@ function Dropdown:_addOption(option)
 	utility:Corner(button, 6)
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
+		if self.Enabled == false then
+			return
+		end
+
 		if self.Flag then
 			self.Library:SetFlag(self.Flag, option, true)
 		else
@@ -1589,6 +2058,17 @@ function Dropdown:SetValue(value, fireCallback)
 	end
 end
 
+function Dropdown:SetEnabled(enabled)
+	self.Enabled = enabled == true
+	self.Label.TextTransparency = self.Enabled and 0 or 0.45
+	self.ValueLabel.TextTransparency = self.Enabled and 0 or 0.45
+	self.Button.BackgroundTransparency = self.Enabled and 0 or 0.35
+
+	if not self.Enabled then
+		self:SetExpanded(false)
+	end
+end
+
 function Dropdown:SetTheme(theme)
 	self.Theme = theme
 	self.Label.TextColor3 = theme.Text
@@ -1629,6 +2109,7 @@ function Input.new(context, section, options)
 		Placeholder = options.Placeholder or "",
 		Callback = options.Callback or function() end,
 		Connections = {},
+		Enabled = true,
 	}, Input)
 
 	local theme = self.Theme
@@ -1677,6 +2158,10 @@ function Input.new(context, section, options)
 	self.Box = box
 
 	utility:Connect(self.Connections, box.FocusLost, function()
+		if self.Enabled == false then
+			return
+		end
+
 		if self.Flag then
 			self.Library:SetFlag(self.Flag, box.Text, true)
 		else
@@ -1686,6 +2171,7 @@ function Input.new(context, section, options)
 
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
+	self.Library:_BindElement(self, options)
 
 	return self
 end
@@ -1712,6 +2198,14 @@ function Input:SetValue(value, fireCallback)
 	end
 end
 
+function Input:SetEnabled(enabled)
+	self.Enabled = enabled == true
+	self.Box.TextEditable = self.Enabled
+	self.Label.TextTransparency = self.Enabled and 0 or 0.45
+	self.Box.TextTransparency = self.Enabled and 0 or 0.45
+	self.Box.BackgroundTransparency = self.Enabled and 0 or 0.35
+end
+
 function Input:SetTheme(theme)
 	self.Theme = theme
 	self.Label.TextColor3 = theme.Text
@@ -1728,6 +2222,212 @@ end
 return Input
 
 end
+ModuleSources["Elements/Keybind"] = function()
+local Keybind = {}
+Keybind.__index = Keybind
+
+local function normalizeKeyCode(value)
+	if value == nil then
+		return nil
+	end
+
+	if typeof(value) == "EnumItem" and value.EnumType == Enum.KeyCode then
+		return value
+	end
+
+	if typeof(value) == "string" then
+		local name = string.gsub(value, "^Enum%.KeyCode%.", "")
+		local ok, keyCode = pcall(function()
+			return Enum.KeyCode[name]
+		end)
+		return ok and keyCode or nil
+	end
+
+	return nil
+end
+
+local function keyName(value)
+	local keyCode = normalizeKeyCode(value)
+	return keyCode and keyCode.Name or "None"
+end
+
+function Keybind.new(context, section, options)
+	local self = setmetatable({
+		Context = context,
+		Section = section,
+		Library = context.Library,
+		Utility = context.Utility,
+		Theme = context.Library.Theme,
+		Name = options.Name or "Keybind",
+		Flag = options.Flag,
+		Value = normalizeKeyCode(options.Default),
+		Mode = options.Mode == "Hold" and "Hold" or "Toggle",
+		Callback = options.Callback or function() end,
+		Connections = {},
+		Listening = false,
+		Enabled = true,
+	}, Keybind)
+
+	local theme = self.Theme
+	local utility = self.Utility
+
+	local row = utility:Create("TextButton", {
+		Name = self.Name,
+		Size = UDim2.new(1, 0, 0, 42),
+		BackgroundTransparency = 1,
+		Text = "",
+		AutoButtonColor = false,
+		Parent = section.Frame,
+	})
+
+	local label = utility:Create("TextLabel", {
+		Name = "Label",
+		Size = UDim2.new(1, -130, 1, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = self.Name,
+		TextColor3 = theme.Text,
+		TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = row,
+	})
+
+	local button = utility:Create("TextButton", {
+		Name = "Bind",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, 0, 0.5, 0),
+		Size = UDim2.fromOffset(118, 32),
+		BackgroundColor3 = theme.Background,
+		Font = Enum.Font.GothamMedium,
+		Text = keyName(self.Value),
+		TextColor3 = theme.MutedText,
+		TextSize = 12,
+		AutoButtonColor = false,
+		Parent = row,
+	})
+	utility:Corner(button, 8)
+	utility:Stroke(button, theme.Stroke, 0.45)
+
+	self.Instance = row
+	self.Label = label
+	self.Button = button
+
+	utility:Connect(self.Connections, button.MouseButton1Click, function()
+		if self.Enabled == false then
+			return
+		end
+
+		self:StartListening()
+	end)
+
+	context.Keybinds:Register(self.Library, self)
+	context.Flags:Register(self.Library, self.Flag, self)
+	self:SetValue(self.Value, false)
+	self.Library:_BindElement(self, options)
+
+	return self
+end
+
+function Keybind:GetValue()
+	return self.Value
+end
+
+function Keybind:StartListening()
+	self.Listening = true
+	self.Library._listeningKeybind = self
+	self.Button.Text = "..."
+	self.Button.TextColor3 = self.Theme.Accent
+end
+
+function Keybind:StopListening()
+	self.Listening = false
+	if self.Library._listeningKeybind == self then
+		self.Library._listeningKeybind = nil
+	end
+	self:Refresh()
+end
+
+function Keybind:CaptureInput(keyCode)
+	if self.Library._listeningKeybind ~= self then
+		return
+	end
+
+	if keyCode == Enum.KeyCode.Escape then
+		self:StopListening()
+		return
+	end
+
+	if keyCode == Enum.KeyCode.Backspace then
+		if self.Flag then
+			self.Library:SetFlag(self.Flag, nil, false)
+		else
+			self:SetValue(nil, false)
+		end
+		self:StopListening()
+		return
+	end
+
+	if keyCode == Enum.KeyCode.Unknown then
+		return
+	end
+
+	if self.Flag then
+		self.Library:SetFlag(self.Flag, keyCode, false)
+	else
+		self:SetValue(keyCode, false)
+	end
+
+	self:StopListening()
+end
+
+function Keybind:Fire(value)
+	task.spawn(self.Callback, value)
+end
+
+function Keybind:Refresh()
+	self.Button.Text = keyName(self.Value)
+	self.Button.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
+	self.Button.BackgroundTransparency = self.Enabled == false and 0.35 or 0
+	self.Label.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
+end
+
+function Keybind:SetValue(value)
+	self.Value = normalizeKeyCode(value)
+	self._held = false
+
+	if self.Flag then
+		self.Library.Flags[self.Flag] = self.Value
+	end
+
+	self:Refresh()
+end
+
+function Keybind:SetEnabled(enabled)
+	self.Enabled = enabled == true
+	if not self.Enabled and self.Listening then
+		self:StopListening()
+	end
+	self:Refresh()
+end
+
+function Keybind:SetTheme(theme)
+	self.Theme = theme
+	self.Button.BackgroundColor3 = theme.Background
+	self:Refresh()
+end
+
+function Keybind:Destroy()
+	self.Context.Keybinds:Unregister(self.Library, self)
+	if self.Library._listeningKeybind == self then
+		self.Library._listeningKeybind = nil
+	end
+	self.Utility:DisconnectAll(self.Connections)
+	self.Instance:Destroy()
+end
+
+return Keybind
+
+end
 ModuleSources["Elements/Paragraph"] = function()
 local Paragraph = {}
 Paragraph.__index = Paragraph
@@ -1739,6 +2439,7 @@ function Paragraph.new(context, section, options)
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
 		Text = text,
+		Connections = {},
 	}, Paragraph)
 
 	local label = self.Utility:Create("TextLabel", {
@@ -1757,6 +2458,7 @@ function Paragraph.new(context, section, options)
 	})
 
 	self.Instance = label
+	context.Library:_BindElement(self, options)
 	return self
 end
 
@@ -1768,6 +2470,15 @@ end
 function Paragraph:SetTheme(theme)
 	self.Theme = theme
 	self.Instance.TextColor3 = theme.MutedText
+end
+
+function Paragraph:SetEnabled(enabled)
+	self.Instance.TextTransparency = enabled == true and 0 or 0.45
+end
+
+function Paragraph:Destroy()
+	self.Utility:DisconnectAll(self.Connections)
+	self.Instance:Destroy()
 end
 
 return Paragraph
@@ -1782,6 +2493,7 @@ function Divider.new(context, section, options)
 		Context = context,
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
+		Connections = {},
 	}, Divider)
 
 	local frame = self.Utility:Create("Frame", {
@@ -1804,6 +2516,7 @@ function Divider.new(context, section, options)
 
 	self.Instance = frame
 	self.Line = line
+	context.Library:_BindElement(self, options)
 	return self
 end
 
@@ -1814,6 +2527,15 @@ end
 function Divider:SetTheme(theme)
 	self.Theme = theme
 	self.Line.BackgroundColor3 = theme.Stroke
+end
+
+function Divider:SetEnabled(enabled)
+	self.Line.BackgroundTransparency = enabled == true and 0.2 or 0.75
+end
+
+function Divider:Destroy()
+	self.Utility:DisconnectAll(self.Connections)
+	self.Instance:Destroy()
 end
 
 return Divider
@@ -1836,15 +2558,24 @@ local Theme = requireModule("Core/Theme")
 local Flags = requireModule("Core/Flags")
 local Config = requireModule("Core/Config")
 local Notify = requireModule("Core/Notify")
+local Tooltip = requireModule("Core/Tooltip")
+local Keybinds = requireModule("Core/Keybinds")
+local Icons = requireModule("Assets/Icons")
+
+if Icons and Icons.Map then
+    Utility.IconGlyphs = Icons.Map
+end
 
 local MidasUI = {
-    Version = "1.1.0",
+    Version = "1.2.0",
     Flags = {},
+    Keybinds = {},
     Themes = Theme.Registry,
     ThemeName = "DarkGold",
     Theme = Theme.Registry.DarkGold,
     _windows = {},
     _flagObjects = {},
+    _dependencies = {},
     _configFolder = "Midas",
     _configFile = "config.json",
     _windowSettings = {},
@@ -1857,8 +2588,12 @@ local Context = {
     Flags = Flags,
     Config = Config,
     Notify = Notify,
+    Tooltip = Tooltip,
+    Keybinds = Keybinds,
     Elements = {},
 }
+
+MidasUI._context = Context
 
 Context.Window = requireModule("Core/Window")
 Context.Tab = requireModule("Core/Tab")
@@ -1868,6 +2603,7 @@ Context.Elements.Toggle = requireModule("Elements/Toggle")
 Context.Elements.Slider = requireModule("Elements/Slider")
 Context.Elements.Dropdown = requireModule("Elements/Dropdown")
 Context.Elements.Input = requireModule("Elements/Input")
+Context.Elements.Keybind = requireModule("Elements/Keybind")
 Context.Elements.Paragraph = requireModule("Elements/Paragraph")
 Context.Elements.Divider = requireModule("Elements/Divider")
 
@@ -1904,12 +2640,88 @@ function MidasUI:SetFlag(flag, value, fireCallback)
     Flags:Set(self, flag, value, fireCallback)
 end
 
-function MidasUI:SaveConfig()
-    return Config:Save(self)
+function MidasUI:_BindElement(element, options)
+    options = options or {}
+
+    if options.Tooltip then
+        Tooltip:Bind(Context, element, element.Instance, options.Tooltip)
+    end
+
+    if options.DependsOn then
+        self:_RegisterDependency(element, options.DependsOn)
+    end
 end
 
-function MidasUI:LoadConfig()
-    return Config:Load(self)
+function MidasUI:_RegisterDependency(element, dependency)
+    if typeof(dependency) ~= "table" or typeof(dependency.Flag) ~= "string" then
+        return
+    end
+
+    local record = {
+        Element = element,
+        Flag = dependency.Flag,
+        Value = dependency.Value,
+        Mode = dependency.Mode or "Visible",
+    }
+
+    table.insert(self._dependencies, record)
+    self:_ApplyDependency(record)
+end
+
+function MidasUI:_ApplyDependency(record)
+    local element = record.Element
+    if not element or not element.Instance then
+        return
+    end
+
+    local expected = record.Value
+    local actual = self.Flags[record.Flag]
+    local passes = false
+
+    if expected == nil then
+        passes = actual == true
+    else
+        passes = actual == expected
+    end
+
+    if record.Mode == "Enabled" then
+        if element.SetEnabled then
+            element:SetEnabled(passes)
+        else
+            element.Instance.Visible = passes
+        end
+    else
+        element.Instance.Visible = passes
+    end
+end
+
+function MidasUI:_RefreshDependencies(flag)
+    for index = #self._dependencies, 1, -1 do
+        local record = self._dependencies[index]
+        local element = record.Element
+
+        if not element or not element.Instance or not element.Instance.Parent then
+            table.remove(self._dependencies, index)
+        elseif not flag or record.Flag == flag then
+            self:_ApplyDependency(record)
+        end
+    end
+end
+
+function MidasUI:SaveConfig(profile)
+    return Config:Save(self, profile)
+end
+
+function MidasUI:LoadConfig(profile)
+    return Config:Load(self, profile)
+end
+
+function MidasUI:DeleteConfig(profile)
+    return Config:Delete(self, profile)
+end
+
+function MidasUI:ListConfigs()
+    return Config:List(self)
 end
 
 function MidasUI:Notify(options)
@@ -1923,12 +2735,36 @@ function MidasUI:Destroy()
 
     table.clear(self._windows)
     table.clear(self._flagObjects)
+    table.clear(self._dependencies)
+    table.clear(self.Keybinds)
+
+    if self._listeningKeybind then
+        self._listeningKeybind = nil
+    end
 
     if self._notifyGui then
         self._notifyGui:Destroy()
         self._notifyGui = nil
         self._notifyHolder = nil
     end
+
+    if self._tooltipGui then
+        Tooltip:Hide(Context)
+        self._tooltipGui:Destroy()
+        self._tooltipGui = nil
+        self._tooltipFrame = nil
+        self._tooltipLabel = nil
+    end
+
+    if self._keybindConnections then
+        Utility:DisconnectAll(self._keybindConnections)
+    end
+
+    if self._tooltipConnections then
+        Utility:DisconnectAll(self._tooltipConnections)
+    end
+
+    self._keybindsReady = false
 end
 
 return MidasUI

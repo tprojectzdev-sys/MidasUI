@@ -11,6 +11,7 @@ function Button.new(context, section, options)
 		Name = options.Name or options.Text or "Button",
 		Callback = options.Callback or options.Func or function() end,
 		Connections = {},
+		Enabled = true,
 	}, Button)
 
 	local theme = self.Theme
@@ -37,18 +38,35 @@ function Button.new(context, section, options)
 	}
 
 	utility:Connect(self.Connections, button.MouseEnter, function()
+		if self.Enabled == false then
+			return
+		end
 		utility:Tween(button, 0.14, { BackgroundColor3 = self.Theme.Topbar })
 	end)
 
 	utility:Connect(self.Connections, button.MouseLeave, function()
+		if self.Enabled == false then
+			return
+		end
 		utility:Tween(button, 0.14, { BackgroundColor3 = self.Theme.Background })
 	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
+		if self.Enabled == false then
+			return
+		end
 		task.spawn(self.Callback)
 	end)
 
+	self.Library:_BindElement(self, options)
+
 	return self
+end
+
+function Button:SetEnabled(enabled)
+	self.Enabled = enabled == true
+	self.Instance.TextTransparency = self.Enabled and 0 or 0.45
+	self.Instance.BackgroundTransparency = self.Enabled and 0 or 0.35
 end
 
 function Button:SetTheme(theme)

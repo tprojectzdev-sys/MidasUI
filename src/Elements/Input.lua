@@ -14,6 +14,7 @@ function Input.new(context, section, options)
 		Placeholder = options.Placeholder or "",
 		Callback = options.Callback or function() end,
 		Connections = {},
+		Enabled = true,
 	}, Input)
 
 	local theme = self.Theme
@@ -62,6 +63,10 @@ function Input.new(context, section, options)
 	self.Box = box
 
 	utility:Connect(self.Connections, box.FocusLost, function()
+		if self.Enabled == false then
+			return
+		end
+
 		if self.Flag then
 			self.Library:SetFlag(self.Flag, box.Text, true)
 		else
@@ -71,6 +76,7 @@ function Input.new(context, section, options)
 
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
+	self.Library:_BindElement(self, options)
 
 	return self
 end
@@ -95,6 +101,14 @@ function Input:SetValue(value, fireCallback)
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
 	end
+end
+
+function Input:SetEnabled(enabled)
+	self.Enabled = enabled == true
+	self.Box.TextEditable = self.Enabled
+	self.Label.TextTransparency = self.Enabled and 0 or 0.45
+	self.Box.TextTransparency = self.Enabled and 0 or 0.45
+	self.Box.BackgroundTransparency = self.Enabled and 0 or 0.35
 end
 
 function Input:SetTheme(theme)

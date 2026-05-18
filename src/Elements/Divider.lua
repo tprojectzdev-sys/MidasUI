@@ -6,6 +6,7 @@ function Divider.new(context, section, options)
 		Context = context,
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
+		Connections = {},
 	}, Divider)
 
 	local frame = self.Utility:Create("Frame", {
@@ -28,6 +29,7 @@ function Divider.new(context, section, options)
 
 	self.Instance = frame
 	self.Line = line
+	context.Library:_BindElement(self, options)
 	return self
 end
 
@@ -38,6 +40,15 @@ end
 function Divider:SetTheme(theme)
 	self.Theme = theme
 	self.Line.BackgroundColor3 = theme.Stroke
+end
+
+function Divider:SetEnabled(enabled)
+	self.Line.BackgroundTransparency = enabled == true and 0.2 or 0.75
+end
+
+function Divider:Destroy()
+	self.Utility:DisconnectAll(self.Connections)
+	self.Instance:Destroy()
 end
 
 return Divider

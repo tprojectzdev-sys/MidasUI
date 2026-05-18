@@ -8,10 +8,18 @@ Utility.IconGlyphs = {
 	home = "H",
 	settings = "S",
 	user = "U",
+	shield = "D",
+	sword = "W",
+	search = "?",
+	warning = "!",
+	info = "i",
 	bell = "B",
 	menu = "M",
+	x = "x",
 	close = "X",
 	minus = "-",
+	plus = "+",
+	check = "Y",
 }
 
 function Utility:Create(className, properties, children)

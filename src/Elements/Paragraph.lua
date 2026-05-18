@@ -8,6 +8,7 @@ function Paragraph.new(context, section, options)
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
 		Text = text,
+		Connections = {},
 	}, Paragraph)
 
 	local label = self.Utility:Create("TextLabel", {
@@ -26,6 +27,7 @@ function Paragraph.new(context, section, options)
 	})
 
 	self.Instance = label
+	context.Library:_BindElement(self, options)
 	return self
 end
 
@@ -37,6 +39,15 @@ end
 function Paragraph:SetTheme(theme)
 	self.Theme = theme
 	self.Instance.TextColor3 = theme.MutedText
+end
+
+function Paragraph:SetEnabled(enabled)
+	self.Instance.TextTransparency = enabled == true and 0 or 0.45
+end
+
+function Paragraph:Destroy()
+	self.Utility:DisconnectAll(self.Connections)
+	self.Instance:Destroy()
 end
 
 return Paragraph

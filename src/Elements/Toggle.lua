@@ -13,6 +13,7 @@ function Toggle.new(context, section, options)
 		Value = options.Default == true,
 		Callback = options.Callback or function() end,
 		Connections = {},
+		Enabled = true,
 	}, Toggle)
 
 	local theme = self.Theme
@@ -68,6 +69,10 @@ function Toggle.new(context, section, options)
 	}
 
 	utility:Connect(self.Connections, row.MouseButton1Click, function()
+		if self.Enabled == false then
+			return
+		end
+
 		if self.Flag then
 			self.Library:SetFlag(self.Flag, not self.Value, true)
 		else
@@ -77,6 +82,7 @@ function Toggle.new(context, section, options)
 
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
+	self.Library:_BindElement(self, options)
 
 	return self
 end
@@ -106,6 +112,13 @@ function Toggle:SetValue(value, fireCallback)
 	if changed and fireCallback ~= false then
 		task.spawn(self.Callback, self.Value)
 	end
+end
+
+function Toggle:SetEnabled(enabled)
+	self.Enabled = enabled == true
+	self.Label.TextTransparency = self.Enabled and 0 or 0.45
+	self.Track.BackgroundTransparency = self.Enabled and 0 or 0.35
+	self.Knob.BackgroundTransparency = self.Enabled and 0 or 0.35
 end
 
 function Toggle:SetTheme(theme)

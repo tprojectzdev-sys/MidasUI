@@ -2,7 +2,7 @@ local MidasUI = loadstring(game:HttpGet("URL_HERE"))()
 
 local Window = MidasUI:CreateWindow({
 	Title = "Midas",
-	Subtitle = "Private Hub",
+	Subtitle = "Minimal Example",
 	Icon = "crown",
 	Theme = "DarkGold",
 	Size = UDim2.fromOffset(620, 460),
@@ -17,17 +17,16 @@ local MainTab = Window:CreateTab({
 
 local General = MainTab:CreateSection("General")
 
-General:CreateParagraph({
-	Text = "MidasUI V1.1 foundation: flags, configs, themes, tabs, sections, and core controls.",
-})
+General:CreateParagraph("A small MidasUI setup with the core V1.2 controls.")
 
 General:CreateButton({
-	Name = "Test Button",
+	Name = "Say Hello",
+	Tooltip = "Runs a simple callback and shows a notification.",
 	Callback = function()
-		print("Clicked")
+		print("Hello from MidasUI")
 		MidasUI:Notify({
 			Title = "Midas",
-			Content = "Button clicked successfully.",
+			Content = "Hello from MidasUI.",
 			Duration = 3,
 		})
 	end,
@@ -37,6 +36,7 @@ General:CreateToggle({
 	Name = "Enabled",
 	Flag = "enabled",
 	Default = false,
+	Tooltip = "This value is stored in MidasUI.Flags.enabled.",
 	Callback = function(value)
 		print("Enabled:", value)
 	end,
@@ -74,43 +74,17 @@ General:CreateInput({
 	end,
 })
 
-General:CreateDivider()
-
-General:CreateParagraph({
-	Text = "Try MidasUI:SetFlag(\"enabled\", true) or MidasUI:SetTheme(\"Midnight\") from your script.",
-})
-
-local SettingsTab = Window:CreateTab({
-	Name = "Settings",
-	Icon = "settings",
-})
-
-local ThemeSection = SettingsTab:CreateSection("Theme")
-
-ThemeSection:CreateDropdown({
-	Name = "Theme",
-	Flag = "theme_choice",
-	Options = { "DarkGold", "Midnight", "BlackWhite" },
-	Default = "DarkGold",
-	Callback = function(value)
-		MidasUI:SetTheme(value)
-	end,
-})
-
-ThemeSection:CreateButton({
-	Name = "Save Config",
-	Callback = function()
-		local ok, err = MidasUI:SaveConfig()
-		MidasUI:Notify({
-			Title = "Midas",
-			Content = ok and "Config saved." or ("Config not saved: " .. tostring(err)),
-			Duration = 4,
-		})
+General:CreateKeybind({
+	Name = "Toggle UI Key",
+	Flag = "toggle_ui_key",
+	Default = Enum.KeyCode.RightControl,
+	Callback = function(keyCode)
+		print("Keybind pressed:", keyCode)
 	end,
 })
 
 MidasUI:Notify({
 	Title = "Midas",
-	Content = "Loaded successfully",
+	Content = "Loaded successfully.",
 	Duration = 5,
 })

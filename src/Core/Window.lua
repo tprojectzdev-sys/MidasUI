@@ -246,10 +246,31 @@ function Window:Destroy()
 	end
 
 	self.Closed = true
-	self.Utility:DisconnectAll(self.Connections)
 
 	if self.SaveConfig then
 		self.Library:SaveConfig()
+	end
+
+	if self.Context.Tooltip then
+		self.Context.Tooltip:Hide(self.Context)
+	end
+
+	for _, tab in ipairs(self.Tabs) do
+		for _, section in ipairs(tab.Sections) do
+			for _, element in ipairs(section.Elements) do
+				if element.Destroy then
+					element:Destroy()
+				end
+			end
+		end
+	end
+
+	self.Utility:DisconnectAll(self.Connections)
+
+	for index = #self.Library._windows, 1, -1 do
+		if self.Library._windows[index] == self then
+			table.remove(self.Library._windows, index)
+		end
 	end
 
 	if self.Gui then

@@ -12,6 +12,10 @@ function Flags:Register(library, flag, element)
 	else
 		library.Flags[flag] = element:GetValue()
 	end
+
+	if library._RefreshDependencies then
+		library:_RefreshDependencies(flag)
+	end
 end
 
 function Flags:Get(library, flag)
@@ -25,6 +29,10 @@ function Flags:Set(library, flag, value, fireCallback)
 		element:SetValue(value, fireCallback ~= false)
 	else
 		library.Flags[flag] = value
+	end
+
+	if library._RefreshDependencies then
+		library:_RefreshDependencies(flag)
 	end
 end
 
