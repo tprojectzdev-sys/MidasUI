@@ -8,6 +8,7 @@ function Divider.new(context, section, options)
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
 		Connections = {},
+		Enabled = true,
 	}, Divider)
 
 	local frame = self.Utility:Create("Frame", {
@@ -35,8 +36,7 @@ function Divider.new(context, section, options)
 end
 
 function Divider:Set(visible)
-	self.Instance.Visible = visible == true
-	return self
+	return self:SetVisible(visible)
 end
 
 function Divider:SetVisible(visible)
@@ -60,6 +60,10 @@ function Divider:GetValue()
 	return nil
 end
 
+function Divider:SetValue(visible)
+	return self:SetVisible(visible)
+end
+
 function Divider:SetTheme(theme)
 	if self.Destroyed then
 		return self
@@ -67,6 +71,7 @@ function Divider:SetTheme(theme)
 
 	self.Theme = theme
 	self.Line.BackgroundColor3 = theme.Stroke
+	self:SetEnabled(self.Enabled)
 	return self
 end
 
@@ -75,24 +80,38 @@ function Divider:SetEnabled(enabled)
 		return self
 	end
 
-	self.Line.BackgroundTransparency = enabled == true and 0.2 or 0.75
+	self.Enabled = enabled == true
+	self.Line.BackgroundTransparency = self.Enabled and 0.2 or 0.75
 	return self
 end
 
+function Divider:Enable()
+	return self:SetEnabled(true)
+end
+
+function Divider:Disable()
+	return self:SetEnabled(false)
+end
+
 function Divider:Refresh()
-	return self:SetTheme(self.Theme)
+	if not self.Destroyed then
+		self:SetTheme(self.Theme)
+	end
+	return self
 end
 
 function Divider:Destroy()
 	if self.Destroyed then
-		return
+		return self
 	end
 
 	self.Destroyed = true
+	self.Context.Library:_UnregisterDependencies(self)
 	self.Utility:DisconnectAll(self.Connections)
 	if self.Instance then
 		self.Instance:Destroy()
 	end
+	return self
 end
 
 return Divider

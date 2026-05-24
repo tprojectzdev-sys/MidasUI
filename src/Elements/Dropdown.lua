@@ -3,28 +3,39 @@ Dropdown.__index = Dropdown
 
 function Dropdown.new(context, section, options)
 	options = options or {}
+	local flag = options.Flag
+	if flag ~= nil and (typeof(flag) ~= "string" or flag == "") then
+		context.Library:_Warn("Flag", "Dropdown ignored an invalid Flag value")
+		flag = nil
+	end
+
+	local dropdownOptions = typeof(options.Options or options.Values) == "table" and (options.Options or options.Values) or {}
+	if options.Options ~= nil and typeof(options.Options) ~= "table" then
+		context.Library:_Warn("Dropdown", "Options must be a table; using an empty option list")
+	end
+
 	local self = setmetatable({
 		Context = context,
 		Section = section,
 		Library = context.Library,
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
-		Name = options.Name or "Dropdown",
-		Flag = options.Flag,
-		Options = options.Options or options.Values or {},
+		Name = tostring(options.Name or "Dropdown"),
+		Flag = flag,
+		Options = dropdownOptions,
 		Value = options.Default,
-		Callback = options.Callback or function() end,
+		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
 		Expanded = false,
 		Enabled = true,
-		MaxVisibleOptions = tonumber(options.MaxVisibleOptions) or 5,
+		MaxVisibleOptions = math.clamp(tonumber(options.MaxVisibleOptions) or 5, 1, 20),
 	}, Dropdown)
 
 	if self.Value == nil and self.Options[1] ~= nil then
 		self.Value = self.Options[1]
 	end
 	if self.Value ~= nil and not table.find(self.Options, self.Value) then
-		context.Library:_Warn("Dropdown '" .. tostring(self.Name) .. "' default was not in Options")
+		context.Library:_Warn("Dropdown", "'" .. tostring(self.Name) .. "' default was not in Options")
 		self.Value = self.Options[1]
 	end
 
@@ -233,7 +244,7 @@ function Dropdown:SetValue(value, fireCallback)
 	end
 
 	if value ~= nil and not table.find(self.Options, value) then
-		self.Library:_Warn("Dropdown '" .. self.Name .. "' ignored invalid value '" .. tostring(value) .. "'")
+		self.Library:_Warn("Dropdown", "'" .. self.Name .. "' ignored invalid value '" .. tostring(value) .. "'")
 		return self
 	end
 
@@ -253,7 +264,7 @@ function Dropdown:SetValue(value, fireCallback)
 	end
 
 	if changed and fireCallback ~= false then
-		task.spawn(self.Callback, self.Value)
+		self.Library:_InvokeCallback("Dropdown", self.Callback, self.Value)
 	end
 	return self
 end
@@ -310,6 +321,10 @@ function Dropdown:SetText(text)
 end
 
 function Dropdown:SetCallback(callback)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Callback = typeof(callback) == "function" and callback or function() end
 	return self
 end
@@ -324,7 +339,7 @@ function Dropdown:SetOptions(options, defaultValue)
 	end
 
 	if typeof(options) ~= "table" then
-		self.Library:_Warn("Dropdown '" .. self.Name .. "' SetOptions ignored: options must be a table")
+		self.Library:_Warn("Dropdown", "'" .. self.Name .. "' SetOptions ignored: options must be a table")
 		return self
 	end
 
@@ -376,16 +391,19 @@ function Dropdown:SetTheme(theme)
 		item.Button.BackgroundColor3 = theme.Card
 	end
 
+	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
 	self:SetValue(self.Value, false)
+	self:SetEnabled(self.Enabled)
 	return self
 end
 
 function Dropdown:Destroy()
 	if self.Destroyed then
-		return
+		return self
 	end
 
 	self.Destroyed = true
+	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 
 	if self.CanvasConnection then
@@ -397,6 +415,7 @@ function Dropdown:Destroy()
 	if self.Instance then
 		self.Instance:Destroy()
 	end
+	return self
 end
 
 return Dropdown

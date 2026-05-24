@@ -50,13 +50,18 @@ Theme.Registry = {
 	},
 }
 
+Theme.Fallback = table.clone(Theme.Registry.DarkGold)
+
 function Theme:Get(name)
 	if typeof(name) == "table" then
 		return self:Normalize(name), "Custom"
 	end
 
-	local themeName = name or "DarkGold"
-	return self.Registry[themeName] or self.Registry.DarkGold, self.Registry[themeName] and themeName or "DarkGold"
+	local themeName = typeof(name) == "string" and name or "DarkGold"
+	if self.Registry[themeName] then
+		return self:Normalize(self.Registry[themeName], themeName), themeName
+	end
+	return self:Normalize(self.Registry.DarkGold), "DarkGold"
 end
 
 function Theme:Normalize(values, baseName)
@@ -64,7 +69,13 @@ function Theme:Normalize(values, baseName)
 	local normalized = {}
 
 	for _, key in ipairs(self.RequiredKeys) do
-		normalized[key] = values[key] or base[key]
+		if typeof(values[key]) == "Color3" then
+			normalized[key] = values[key]
+		elseif typeof(base[key]) == "Color3" then
+			normalized[key] = base[key]
+		else
+			normalized[key] = self.Fallback[key]
+		end
 	end
 
 	return normalized
@@ -80,7 +91,7 @@ function Theme:Register(name, values)
 	end
 
 	self.Registry[name] = self:Normalize(values)
-	return true
+	return true, self.Registry[name]
 end
 
 return Theme

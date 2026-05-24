@@ -3,16 +3,22 @@ Toggle.__index = Toggle
 
 function Toggle.new(context, section, options)
 	options = options or {}
+	local flag = options.Flag
+	if flag ~= nil and (typeof(flag) ~= "string" or flag == "") then
+		context.Library:_Warn("Flag", "Toggle ignored an invalid Flag value")
+		flag = nil
+	end
+
 	local self = setmetatable({
 		Context = context,
 		Section = section,
 		Library = context.Library,
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
-		Name = options.Name or "Toggle",
-		Flag = options.Flag,
+		Name = tostring(options.Name or "Toggle"),
+		Flag = flag,
 		Value = options.Default == true,
-		Callback = options.Callback or function() end,
+		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
 		Enabled = true,
 	}, Toggle)
@@ -114,7 +120,12 @@ function Toggle:SetValue(value, fireCallback)
 		return self
 	end
 
-	local nextValue = value == true
+	if typeof(value) ~= "boolean" then
+		self.Library:_Warn("Toggle", "'" .. self.Name .. "' ignored a non-boolean value")
+		return self
+	end
+
+	local nextValue = value
 	local changed = self.Value ~= nextValue
 	self.Value = nextValue
 
@@ -132,7 +143,7 @@ function Toggle:SetValue(value, fireCallback)
 	})
 
 	if changed and fireCallback ~= false then
-		task.spawn(self.Callback, self.Value)
+		self.Library:_InvokeCallback("Toggle", self.Callback, self.Value)
 	end
 
 	return self
@@ -187,6 +198,10 @@ function Toggle:SetText(text)
 end
 
 function Toggle:SetCallback(callback)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Callback = typeof(callback) == "function" and callback or function() end
 	return self
 end
@@ -213,21 +228,25 @@ function Toggle:SetTheme(theme)
 		local object, property, key = binding[1], binding[2], binding[3]
 		object[property] = theme[key]
 	end
+	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
 	self:SetValue(self.Value, false)
+	self:SetEnabled(self.Enabled)
 	return self
 end
 
 function Toggle:Destroy()
 	if self.Destroyed then
-		return
+		return self
 	end
 
 	self.Destroyed = true
+	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)
 	if self.Instance then
 		self.Instance:Destroy()
 	end
+	return self
 end
 
 return Toggle

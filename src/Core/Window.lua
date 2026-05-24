@@ -3,7 +3,7 @@ Window.__index = Window
 
 function Window.new(context, options)
 	if options ~= nil and typeof(options) ~= "table" then
-		context.Library:_Warn("Window.new expected an options table")
+		context.Library:_Warn("API", "Window.new expected an options table")
 		options = {}
 	end
 
@@ -19,20 +19,35 @@ function Window.new(context, options)
 		ActiveTab = nil,
 		Minimized = false,
 		Closed = false,
-		Title = options.Title or options.Name or "MidasUI",
-		Subtitle = options.Subtitle or "",
+		Title = tostring(options.Title or options.Name or "MidasUI"),
+		Subtitle = tostring(options.Subtitle or ""),
 		Icon = options.Icon or "crown",
 		SaveConfig = options.SaveConfig == true,
-		Resizeable = options.Resizeable ~= false,
+		Resizeable = options.Resizeable ~= false and options.Resizable ~= false,
 	}, Window)
 
 	local library = self.Library
 	local utility = self.Utility
 	local theme = self.Theme
-	local size = options.Size or UDim2.fromOffset(620, 460)
+	local size = options.Size
+	if size ~= nil and typeof(size) ~= "UDim2" then
+		library:_Warn("API", "Window Size must be a UDim2; using the default size")
+		size = nil
+	end
+	size = size or UDim2.fromOffset(620, 460)
 
-	library._configFolder = options.ConfigFolder or library._configFolder or "Midas"
-	library._configFile = options.ConfigFile or library._configFile or "config.json"
+	if options.ConfigFolder ~= nil and typeof(options.ConfigFolder) ~= "string" then
+		library:_Warn("Config", "ConfigFolder must be a string; using the current folder")
+	elseif options.ConfigFolder ~= nil and options.ConfigFolder ~= "" then
+		library._configFolder = options.ConfigFolder
+	end
+	if options.ConfigFile ~= nil and typeof(options.ConfigFile) ~= "string" then
+		library:_Warn("Config", "ConfigFile must be a string; using the current legacy filename")
+	elseif options.ConfigFile ~= nil and options.ConfigFile ~= "" then
+		library._configFile = options.ConfigFile
+	end
+	library._configFolder = library._configFolder or "Midas"
+	library._configFile = library._configFile or "config.json"
 	library._activeWindow = self
 	library._windowSettings = library._windowSettings or {}
 
@@ -282,11 +297,15 @@ end
 
 function Window:CreateTab(options)
 	if self.Closed then
-		self.Library:_Warn("CreateTab ignored: window is destroyed")
+		self.Library:_Warn("Lifecycle", "CreateTab ignored: window is destroyed")
 		return nil
 	end
 
-	options = typeof(options) == "table" and options or { Name = tostring(options) }
+	if options == nil then
+		options = {}
+	elseif typeof(options) ~= "table" then
+		options = { Name = tostring(options) }
+	end
 	local tab = self.Context.Tab.new(self.Context, self, options)
 	table.insert(self.Tabs, tab)
 
@@ -299,7 +318,7 @@ end
 
 function Window:SelectTab(tab)
 	if self.Closed then
-		return
+		return self
 	end
 
 	if typeof(tab) == "string" then
@@ -312,8 +331,8 @@ function Window:SelectTab(tab)
 	end
 
 	if typeof(tab) ~= "table" or tab.Destroyed then
-		self.Library:_Warn("SelectTab ignored: invalid tab")
-		return
+		self.Library:_Warn("API", "SelectTab ignored: invalid tab")
+		return self
 	end
 
 	self.ActiveTab = tab
@@ -321,9 +340,14 @@ function Window:SelectTab(tab)
 	for _, item in ipairs(self.Tabs) do
 		item:SetActive(item == tab)
 	end
+	return self
 end
 
 function Window:SetMinimized(value)
+	if self.Closed then
+		return self
+	end
+
 	self.Minimized = value == true
 	self.Library._windowSettings.Minimized = self.Minimized
 
@@ -338,14 +362,24 @@ function Window:SetMinimized(value)
 	self.Sidebar.Visible = not self.Minimized
 	self.Content.Visible = not self.Minimized
 	self.ResizeButton.Visible = self.Resizeable and not self.Minimized
+	return self
 end
 
 function Window:SetTheme(theme)
+	if self.Closed then
+		return self
+	end
+
 	if typeof(theme) == "string" then
 		self.Library:SetTheme(theme)
 		return self
 	end
 
+	if typeof(theme) ~= "table" then
+		self.Library:_Warn("Theme", "Window:SetTheme ignored an invalid theme value")
+		return self
+	end
+	theme = self.Context.Theme:Normalize(theme)
 	self.Theme = theme
 
 	for _, binding in ipairs(self._themeObjects) do
@@ -374,6 +408,7 @@ end
 function Window:Hide()
 	if not self.Closed and self.Gui then
 		self.Gui.Enabled = false
+		self.Context.Tooltip:Hide(self.Context)
 	end
 	return self
 end
@@ -390,9 +425,14 @@ end
 
 function Window:Close()
 	self:Destroy()
+	return self
 end
 
 function Window:SetTitle(titleText)
+	if self.Closed then
+		return self
+	end
+
 	self.Title = tostring(titleText or "")
 	if self.TitleLabel then
 		self.TitleLabel.Text = self.Title
@@ -401,6 +441,10 @@ function Window:SetTitle(titleText)
 end
 
 function Window:SetSubtitle(subtitleText)
+	if self.Closed then
+		return self
+	end
+
 	self.Subtitle = tostring(subtitleText or "")
 	if self.SubtitleLabel then
 		self.SubtitleLabel.Text = self.Subtitle
@@ -409,17 +453,25 @@ function Window:SetSubtitle(subtitleText)
 end
 
 function Window:Notify(options)
+	if self.Closed then
+		return self
+	end
+
 	self.Library:Notify(options)
 	return self
 end
 
 function Window:Dialog(options)
+	if self.Closed then
+		return nil
+	end
+
 	return self.Library:Dialog(options)
 end
 
 function Window:Destroy()
 	if self.Closed then
-		return
+		return self
 	end
 
 	self.Closed = true
@@ -431,6 +483,9 @@ function Window:Destroy()
 
 	if self.Context.Tooltip then
 		self.Context.Tooltip:Hide(self.Context)
+	end
+	if self.Context.Dialog then
+		self.Context.Dialog:Close(self.Context)
 	end
 
 	for _, tab in ipairs(table.clone(self.Tabs)) do
@@ -447,6 +502,9 @@ function Window:Destroy()
 			table.remove(self.Library._windows, index)
 		end
 	end
+	if self.Library._activeWindow == self then
+		self.Library._activeWindow = self.Library._windows[#self.Library._windows]
+	end
 
 	if #self.Library._windows == 0 and self.Library._CleanupWindowRuntime then
 		self.Library:_CleanupWindowRuntime()
@@ -455,6 +513,7 @@ function Window:Destroy()
 	if self.Gui then
 		self.Gui:Destroy()
 	end
+	return self
 end
 
 return Window

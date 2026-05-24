@@ -13,10 +13,13 @@ MidasUI:RegisterTheme("ObsidianGold", {
 	Stroke = Color3.fromRGB(80, 66, 38),
 	Danger = Color3.fromRGB(230, 88, 88),
 })
+MidasUI:RegisterTheme("PartialGold", {
+	Accent = Color3.fromRGB(244, 205, 112),
+})
 
 local Window = MidasUI:CreateWindow({
-	Title = "MidasUI V1.4 Developer API Showcase",
-	Subtitle = "Controllers, dialogs, diagnostics, themes, runtime updates",
+	Title = "MidasUI V1.5 Manual QA Showcase",
+	Subtitle = "API stability, configs, transient UI, themes, diagnostics",
 	Icon = "crown",
 	Theme = "DarkGold",
 	Size = UDim2.fromOffset(740, 550),
@@ -31,6 +34,7 @@ local Status = Controllers:CreateParagraph({
 	Text = "Controller status: ready.",
 	Tooltip = "This paragraph is stored and updated through its controller.",
 })
+Controllers:CreateDivider()
 
 local MasterToggle = Controllers:CreateToggle({
 	Name = "Master Toggle",
@@ -65,6 +69,18 @@ Controllers:CreateButton({
 		ControlledSlider:Set(75)
 		DynamicDropdown:SetOptions({ "One", "Two", "Three", "Four", "Five", "Six" }, "Three")
 		MasterToggle:Set(true)
+	end,
+})
+
+Controllers:CreateButton({
+	Name = "Disable Then Enable Controls",
+	Callback = function()
+		MasterToggle:Disable()
+		ControlledSlider:Disable()
+		task.delay(1, function()
+			MasterToggle:Enable():Refresh()
+			ControlledSlider:Enable():Refresh()
+		end)
 	end,
 })
 
@@ -123,6 +139,16 @@ Runtime:CreateButton({
 })
 
 Runtime:CreateButton({
+	Name = "Bad Values Stay Safe",
+	Tooltip = "Debug mode reports rejected values without damaging controller state.",
+	Callback = function()
+		MidasUI:SetFlag("controlled_slider", "not a number")
+		MidasUI:SetFlag("dynamic_dropdown", "Missing option")
+		MidasUI:SetFlag("master_dependency", "not a boolean")
+	end,
+})
+
+Runtime:CreateButton({
 	Name = "SetFlag: Master On",
 	Callback = function()
 		MidasUI:SetFlag("master_dependency", true)
@@ -145,7 +171,7 @@ Dialogs:CreateButton({
 		Window:Dialog({
 			Type = "Info",
 			Title = "Information",
-			Content = "This is a themed V1.4 dialog.",
+			Content = "This is a themed V1.5 dialog.",
 		})
 	end,
 })
@@ -173,7 +199,7 @@ Dialogs:CreateButton({
 			Title = "Rename Window",
 			Content = "Enter a new window title.",
 			Placeholder = "Window title",
-			Default = "MidasUI V1.4",
+			Default = "MidasUI V1.5",
 			OnConfirm = function(text)
 				Window:SetTitle(text)
 			end,
@@ -207,7 +233,7 @@ local Themes = Settings:CreateSection("Themes")
 Themes:CreateDropdown({
 	Name = "Runtime Theme",
 	Flag = "theme",
-	Options = { "DarkGold", "Midnight", "BlackWhite", "ObsidianGold" },
+	Options = { "DarkGold", "Midnight", "BlackWhite", "ObsidianGold", "PartialGold" },
 	Default = "DarkGold",
 	Callback = function(themeName)
 		MidasUI:SetTheme(themeName)
@@ -250,12 +276,37 @@ Profiles:CreateButton({
 })
 
 Profiles:CreateButton({
+	Name = "Save / Load Default Profile",
+	Callback = function()
+		local saved, saveError = MidasUI:SaveConfig()
+		local loaded, loadError = MidasUI:LoadConfig()
+		local message = saved and loaded and "Default profile round-trip passed."
+			or tostring(saveError or loadError)
+		MidasUI:Notify({ Title = "Default Config", Content = message, Duration = 3 })
+	end,
+})
+
+Profiles:CreateButton({
 	Name = "Print Debug State",
 	Callback = function()
 		local state = MidasUI:GetDebugState()
 		if state then
 			print("MidasUI Debug:", state.Version, state.Theme, state.WindowCount, state.FlagCount, state.KeybindCount)
 		end
+	end,
+})
+
+Profiles:CreateButton({
+	Name = "Notification Cleanup Test",
+	Callback = function()
+		local notification = MidasUI:Notify({
+			Title = "Controller",
+			Content = "This notification closes after one second.",
+			Duration = 10,
+		})
+		task.delay(1, function()
+			notification:Close()
+		end)
 	end,
 })
 
@@ -317,6 +368,6 @@ Keybinds:CreateKeybind({
 
 MidasUI:Notify({
 	Title = "MidasUI",
-	Content = "V1.4 showcase loaded.",
+	Content = "V1.5 showcase loaded. Use the sections as a manual QA suite.",
 	Duration = 4,
 })

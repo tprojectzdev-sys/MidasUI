@@ -11,9 +11,13 @@ local function getControllers(library, flag)
 end
 
 function Flags:Register(library, flag, element)
+	if flag == nil then
+		return
+	end
+
 	if typeof(flag) ~= "string" or flag == "" then
 		if library._Warn then
-			library:_Warn("Flag registration skipped: invalid flag")
+			library:_Warn("Flag", "Registration skipped: flag must be a non-empty string")
 		end
 		return
 	end
@@ -26,13 +30,19 @@ function Flags:Register(library, flag, element)
 	end
 
 	if #controllers > 0 and library._Warn then
-		library:_Warn("Multiple elements are bound to flag '" .. flag .. "'")
+		library:_Warn("Flag", "Multiple elements are bound to flag '" .. flag .. "'")
 	end
 
 	table.insert(controllers, element)
 
 	if library.Flags[flag] ~= nil then
 		element:SetValue(library.Flags[flag], false)
+		if controllers[1].GetValue then
+			library.Flags[flag] = controllers[1]:GetValue()
+			if controllers[1] ~= element then
+				element:SetValue(library.Flags[flag], false)
+			end
+		end
 	elseif element.GetValue then
 		library.Flags[flag] = element:GetValue()
 	end
@@ -70,23 +80,35 @@ end
 function Flags:Set(library, flag, value, fireCallback)
 	local controllers = library._flagObjects[flag]
 	local shouldFire = fireCallback ~= false
-
-	library.Flags[flag] = value
+	local primary
 
 	if controllers then
 		for index = #controllers, 1, -1 do
 			local controller = controllers[index]
 			if not controller or controller.Destroyed or not controller.Instance or not controller.Instance.Parent then
 				table.remove(controllers, index)
-			elseif controller.SetValue then
-				controller:SetValue(value, shouldFire)
 			end
 		end
 
 		if #controllers == 0 then
 			library._flagObjects[flag] = nil
+		else
+			primary = controllers[1]
+			if primary.SetValue then
+				primary:SetValue(value, shouldFire)
+				value = primary.GetValue and primary:GetValue() or value
+			end
+
+			for index = 2, #controllers do
+				local controller = controllers[index]
+				if controller.SetValue then
+					controller:SetValue(value, shouldFire)
+				end
+			end
 		end
 	end
+
+	library.Flags[flag] = value
 
 	if library._RefreshDependencies then
 		library:_RefreshDependencies(flag)

@@ -8,7 +8,7 @@ function Section.new(context, tab, name)
 		Library = context.Library,
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
-		Name = name or "Section",
+		Name = tostring(name or "Section"),
 		Elements = {},
 	}, Section)
 
@@ -56,19 +56,23 @@ function Section:Set(name)
 end
 
 function Section:Rename(name)
-	self.Name = name
-	self.TitleLabel.Text = name
+	if self.Destroyed then
+		return self
+	end
+
+	self.Name = tostring(name or self.Name)
+	self.TitleLabel.Text = self.Name
 	return self
 end
 
 function Section:_createElement(moduleName, options)
 	if self.Destroyed then
-		self.Library:_Warn("Create" .. moduleName .. " ignored: section is destroyed")
+		self.Library:_Warn("Lifecycle", "Create" .. moduleName .. " ignored: section is destroyed")
 		return nil
 	end
 
 	if options ~= nil and typeof(options) ~= "table" then
-		self.Library:_Warn("Create" .. moduleName .. " expected an options table")
+		self.Library:_Warn("API", "Create" .. moduleName .. " expected an options table")
 		options = {}
 	end
 
@@ -130,6 +134,7 @@ function Section:SetTheme(theme)
 			object[property] = theme[key]
 		end
 	end
+	self.Utility:ApplyStrokeTheme(self.Frame, theme.Stroke)
 
 	for _, element in ipairs(self.Elements) do
 		if element.SetTheme then
@@ -141,6 +146,10 @@ function Section:SetTheme(theme)
 end
 
 function Section:Show()
+	if self.Destroyed then
+		return self
+	end
+
 	if self.Frame then
 		self.Frame.Visible = true
 	end
@@ -148,6 +157,10 @@ function Section:Show()
 end
 
 function Section:Hide()
+	if self.Destroyed then
+		return self
+	end
+
 	if self.Frame then
 		self.Frame.Visible = false
 	end
@@ -155,6 +168,10 @@ function Section:Hide()
 end
 
 function Section:RefreshLayout()
+	if self.Destroyed then
+		return self
+	end
+
 	if self.Tab and self.Tab.RefreshLayout then
 		self.Tab:RefreshLayout()
 	end
@@ -162,6 +179,10 @@ function Section:RefreshLayout()
 end
 
 function Section:RemoveElement(element)
+	if self.Destroyed then
+		return self
+	end
+
 	if element and element.Destroy then
 		element:Destroy()
 	end
@@ -170,7 +191,7 @@ end
 
 function Section:Destroy()
 	if self.Destroyed then
-		return
+		return self
 	end
 
 	self.Destroyed = true
@@ -193,6 +214,7 @@ function Section:Destroy()
 			end
 		end
 	end
+	return self
 end
 
 return Section

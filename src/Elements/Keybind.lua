@@ -31,6 +31,11 @@ end
 
 function Keybind.new(context, section, options)
 	options = options or {}
+	local flag = options.Flag
+	if flag ~= nil and (typeof(flag) ~= "string" or flag == "") then
+		context.Library:_Warn("Flag", "Keybind ignored an invalid Flag value")
+		flag = nil
+	end
 
 	local self = setmetatable({
 		Context = context,
@@ -38,11 +43,11 @@ function Keybind.new(context, section, options)
 		Library = context.Library,
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
-		Name = options.Name or "Keybind",
-		Flag = options.Flag,
+		Name = tostring(options.Name or "Keybind"),
+		Flag = flag,
 		Value = normalizeKeyCode(options.Default),
 		Mode = options.Mode == "Hold" and "Hold" or "Toggle",
-		Callback = options.Callback or function() end,
+		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
 		Listening = false,
 		Enabled = true,
@@ -115,16 +120,30 @@ function Keybind:GetValue()
 end
 
 function Keybind:SetVisual(keyCode)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Button.Text = keyName(keyCode)
 	self.Button.TextColor3 = self.Enabled == false and self.Theme.MutedText or self.Theme.Text
+	return self
 end
 
 function Keybind:ClearVisual()
+	if self.Destroyed then
+		return self
+	end
+
 	self.Button.Text = "None"
 	self.Button.TextColor3 = self.Theme.MutedText
+	return self
 end
 
 function Keybind:Refresh()
+	if self.Destroyed then
+		return self
+	end
+
 	if self.Value then
 		self:SetVisual(self.Value)
 	else
@@ -137,6 +156,10 @@ function Keybind:Refresh()
 end
 
 function Keybind:StartListening()
+	if self.Destroyed or self.Enabled == false then
+		return self
+	end
+
 	if self.Library._listeningKeybind and self.Library._listeningKeybind ~= self then
 		self.Library._listeningKeybind:StopListening()
 	end
@@ -150,9 +173,14 @@ function Keybind:StartListening()
 
 	self.Button.Text = "..."
 	self.Button.TextColor3 = self.Theme.Accent
+	return self
 end
 
 function Keybind:StopListening()
+	if self.Destroyed then
+		return self
+	end
+
 	self.Listening = false
 
 	if self.RegistryEntry then
@@ -164,16 +192,21 @@ function Keybind:StopListening()
 	end
 
 	self:Refresh()
+	return self
 end
 
 function Keybind:CaptureInput(keyCode)
+	if self.Destroyed then
+		return self
+	end
+
 	if self.Library._listeningKeybind ~= self then
-		return
+		return self
 	end
 
 	if keyCode == Enum.KeyCode.Escape then
 		self:StopListening()
-		return
+		return self
 	end
 
 	if keyCode == Enum.KeyCode.Backspace then
@@ -183,11 +216,11 @@ function Keybind:CaptureInput(keyCode)
 			self:SetValue(nil, false)
 		end
 		self:StopListening()
-		return
+		return self
 	end
 
 	if keyCode == Enum.KeyCode.Unknown then
-		return
+		return self
 	end
 
 	if self.Flag then
@@ -197,6 +230,7 @@ function Keybind:CaptureInput(keyCode)
 	end
 
 	self:StopListening()
+	return self
 end
 
 function Keybind:SetValue(value)
@@ -206,7 +240,8 @@ function Keybind:SetValue(value)
 
 	local keyCode = normalizeKeyCode(value)
 	if value ~= nil and not keyCode then
-		self.Library:_Warn("Keybind '" .. self.Name .. "' received an invalid key value")
+		self.Library:_Warn("Keybind", "'" .. self.Name .. "' received an invalid key value")
+		return self
 	end
 	self.Value = keyCode
 
@@ -271,6 +306,10 @@ function Keybind:SetText(text)
 end
 
 function Keybind:SetCallback(callback)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Callback = typeof(callback) == "function" and callback or function() end
 	if self.RegistryEntry then
 		self.RegistryEntry.Callback = self.Callback
@@ -289,16 +328,18 @@ function Keybind:SetTheme(theme)
 
 	self.Theme = theme
 	self.Button.BackgroundColor3 = theme.Background
+	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
 	self:Refresh()
 	return self
 end
 
 function Keybind:Destroy()
 	if self.Destroyed then
-		return
+		return self
 	end
 
 	self.Destroyed = true
+	self.Library:_UnregisterDependencies(self)
 	self.Context.Keybinds:Unregister(self.Library, self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 
@@ -310,6 +351,7 @@ function Keybind:Destroy()
 	if self.Instance then
 		self.Instance:Destroy()
 	end
+	return self
 end
 
 return Keybind

@@ -9,7 +9,7 @@ function Tab.new(context, window, options)
 		Library = context.Library,
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
-		Name = options.Name or "Tab",
+		Name = tostring(options.Name or "Tab"),
 		Icon = options.Icon or "",
 		Sections = {},
 		Connections = {},
@@ -94,7 +94,7 @@ end
 
 function Tab:CreateSection(name)
 	if self.Destroyed then
-		self.Library:_Warn("CreateSection ignored: tab is destroyed")
+		self.Library:_Warn("Lifecycle", "CreateSection ignored: tab is destroyed")
 		return nil
 	end
 
@@ -105,16 +105,21 @@ end
 
 function Tab:SetActive(active)
 	if self.Destroyed then
-		return
+		return self
 	end
 
 	self.Page.Visible = active
 	self.Button.BackgroundTransparency = active and 0 or 1
 	self.IconLabel.TextColor3 = active and self.Theme.Accent or self.Theme.MutedText
 	self.Label.TextColor3 = active and self.Theme.Text or self.Theme.MutedText
+	return self
 end
 
 function Tab:Show()
+	if self.Destroyed then
+		return self
+	end
+
 	if self.Button then
 		self.Button.Visible = true
 	end
@@ -122,6 +127,10 @@ function Tab:Show()
 end
 
 function Tab:Hide()
+	if self.Destroyed then
+		return self
+	end
+
 	if self.Button then
 		self.Button.Visible = false
 	end
@@ -132,6 +141,10 @@ function Tab:Hide()
 end
 
 function Tab:Rename(name)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Name = tostring(name or self.Name)
 	if self.Label then
 		self.Label.Text = self.Name
@@ -140,6 +153,10 @@ function Tab:Rename(name)
 end
 
 function Tab:RefreshLayout()
+	if self.Destroyed then
+		return self
+	end
+
 	if self.CanvasConnection and self.PageList then
 		self.Page.CanvasSize = UDim2.fromOffset(0, self.PageList.AbsoluteContentSize.Y + 28)
 	end
@@ -172,7 +189,7 @@ end
 
 function Tab:Destroy()
 	if self.Destroyed then
-		return
+		return self
 	end
 
 	self.Destroyed = true
@@ -202,6 +219,16 @@ function Tab:Destroy()
 			table.remove(self.Window.Tabs, index)
 		end
 	end
+	if self.Window.ActiveTab == self then
+		self.Window.ActiveTab = nil
+		for _, tab in ipairs(self.Window.Tabs) do
+			if not tab.Destroyed and tab.Button.Visible then
+				self.Window:SelectTab(tab)
+				break
+			end
+		end
+	end
+	return self
 end
 
 return Tab

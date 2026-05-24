@@ -9,8 +9,8 @@ function Button.new(context, section, options)
 		Library = context.Library,
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
-		Name = options.Name or options.Text or "Button",
-		Callback = options.Callback or options.Func or function() end,
+		Name = tostring(options.Name or options.Text or "Button"),
+		Callback = typeof(options.Callback or options.Func) == "function" and (options.Callback or options.Func) or function() end,
 		Connections = {},
 		Enabled = true,
 	}, Button)
@@ -57,7 +57,7 @@ function Button.new(context, section, options)
 		if self.Enabled == false then
 			return
 		end
-		task.spawn(self.Callback)
+		self.Library:_InvokeCallback("Button", self.Callback)
 	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Down, function()
@@ -126,6 +126,10 @@ function Button:SetText(text)
 end
 
 function Button:SetCallback(callback)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Callback = typeof(callback) == "function" and callback or function() end
 	return self
 end
@@ -151,19 +155,23 @@ function Button:SetTheme(theme)
 		local object, property, key = binding[1], binding[2], binding[3]
 		object[property] = theme[key]
 	end
+	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
+	self:SetEnabled(self.Enabled)
 	return self
 end
 
 function Button:Destroy()
 	if self.Destroyed then
-		return
+		return self
 	end
 
 	self.Destroyed = true
+	self.Library:_UnregisterDependencies(self)
 	self.Utility:DisconnectAll(self.Connections)
 	if self.Instance then
 		self.Instance:Destroy()
 	end
+	return self
 end
 
 return Button

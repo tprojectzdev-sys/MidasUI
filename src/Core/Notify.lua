@@ -42,6 +42,19 @@ function Notify:Show(context, options)
 	local titleText = tostring(options.Title or "MidasUI")
 	local contentText = tostring(options.Content or "")
 
+	local function removeFrame(target)
+		if not library._notifications then
+			return
+		end
+
+		for index = #library._notifications, 1, -1 do
+			if library._notifications[index] == target then
+				table.remove(library._notifications, index)
+				break
+			end
+		end
+	end
+
 	if #library._notifications >= 6 then
 		local oldest = table.remove(library._notifications, 1)
 		if oldest and oldest.Parent then
@@ -110,6 +123,15 @@ function Notify:Show(context, options)
 
 	table.insert(library._notifications, frame)
 
+	local controller = {}
+	function controller:Close()
+		removeFrame(frame)
+		if frame and frame.Parent then
+			frame:Destroy()
+		end
+		return self
+	end
+
 	task.delay(duration, function()
 		if not frame.Parent then
 			return
@@ -120,14 +142,11 @@ function Notify:Show(context, options)
 			BackgroundTransparency = 1,
 		})
 		tween.Completed:Wait()
-		for index = #library._notifications, 1, -1 do
-			if library._notifications[index] == frame then
-				table.remove(library._notifications, index)
-				break
-			end
-		end
+		removeFrame(frame)
 		frame:Destroy()
 	end)
+
+	return controller
 end
 
 function Notify:SetTheme(context)

@@ -3,13 +3,14 @@ Paragraph.__index = Paragraph
 
 function Paragraph.new(context, section, options)
 	options = options or {}
-	local text = options.Text or options.Content or options.Name or "Paragraph"
+	local text = tostring(options.Text or options.Content or options.Name or "Paragraph")
 	local self = setmetatable({
 		Context = context,
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
 		Text = text,
 		Connections = {},
+		Enabled = true,
 	}, Paragraph)
 
 	local label = self.Utility:Create("TextLabel", {
@@ -37,8 +38,8 @@ function Paragraph:Set(text)
 		return self
 	end
 
-	self.Text = text
-	self.Instance.Text = text
+	self.Text = tostring(text or "")
+	self.Instance.Text = self.Text
 	return self
 end
 
@@ -78,6 +79,7 @@ function Paragraph:SetTheme(theme)
 
 	self.Theme = theme
 	self.Instance.TextColor3 = theme.MutedText
+	self:SetEnabled(self.Enabled)
 	return self
 end
 
@@ -86,24 +88,39 @@ function Paragraph:SetEnabled(enabled)
 		return self
 	end
 
-	self.Instance.TextTransparency = enabled == true and 0 or 0.45
+	self.Enabled = enabled == true
+	self.Instance.TextTransparency = self.Enabled and 0 or 0.45
 	return self
 end
 
+function Paragraph:Enable()
+	return self:SetEnabled(true)
+end
+
+function Paragraph:Disable()
+	return self:SetEnabled(false)
+end
+
 function Paragraph:Refresh()
-	return self:Set(self.Text)
+	if not self.Destroyed then
+		self:Set(self.Text)
+		self:SetEnabled(self.Enabled)
+	end
+	return self
 end
 
 function Paragraph:Destroy()
 	if self.Destroyed then
-		return
+		return self
 	end
 
 	self.Destroyed = true
+	self.Context.Library:_UnregisterDependencies(self)
 	self.Utility:DisconnectAll(self.Connections)
 	if self.Instance then
 		self.Instance:Destroy()
 	end
+	return self
 end
 
 return Paragraph

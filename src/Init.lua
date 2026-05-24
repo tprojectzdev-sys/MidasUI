@@ -18,17 +18,18 @@ if Icons and Icons.Map then
 end
 
 local MidasUI = {
-	Version = "1.4.0",
+	Version = "1.5.0",
 	Flags = {},
 	Keybinds = {},
 	Themes = Theme.Registry,
 	ThemeName = "DarkGold",
-	Theme = Theme.Registry.DarkGold,
+	Theme = Theme:Normalize(Theme.Registry.DarkGold),
 	_windows = {},
 	_flagObjects = {},
 	_dependencies = {},
 	_debug = false,
 	_warnings = {},
+	_warningCategories = {},
 	_configFolder = "Midas",
 	_configFile = "config.json",
 	_windowSettings = {},
@@ -62,19 +63,41 @@ Context.Elements.Keybind = require(elementsFolder:WaitForChild("Keybind"))
 Context.Elements.Paragraph = require(elementsFolder:WaitForChild("Paragraph"))
 Context.Elements.Divider = require(elementsFolder:WaitForChild("Divider"))
 
-function MidasUI:_Warn(message)
+function MidasUI:_Warn(category, message)
 	if not self._debug then
 		return
 	end
 
-	local text = "[MidasUI] " .. tostring(message)
+	if message == nil then
+		message = category
+		category = "General"
+	end
+
+	category = tostring(category or "General")
+	local text = "[MidasUI][" .. category .. "] " .. tostring(message)
 	table.insert(self._warnings, text)
+	self._warningCategories[category] = (self._warningCategories[category] or 0) + 1
 	warn(text)
 end
 
 function MidasUI:SetDebug(enabled)
 	self._debug = enabled == true
 	return self
+end
+
+function MidasUI:_InvokeCallback(category, callback, ...)
+	if typeof(callback) ~= "function" then
+		self:_Warn(category or "Callback", "Ignored a callback that is not a function")
+		return
+	end
+
+	local arguments = table.pack(...)
+	task.spawn(function()
+		local ok, err = pcall(callback, table.unpack(arguments, 1, arguments.n))
+		if not ok then
+			self:_Warn(category or "Callback", "Callback failed: " .. tostring(err))
+		end
+	end)
 end
 
 function MidasUI:GetDebugState()
@@ -100,24 +123,30 @@ function MidasUI:GetDebugState()
 		KeybindCount = keybindCount,
 		DependencyCount = #self._dependencies,
 		Warnings = table.clone(self._warnings),
+		WarningCategories = table.clone(self._warningCategories),
 	}
 end
 
 function MidasUI:RegisterTheme(name, values)
 	local ok, err = Theme:Register(name, values)
 	if not ok then
-		self:_Warn(err)
+		self:_Warn("Theme", err)
 		return false, err
 	end
 
 	self.Themes = Theme.Registry
-	return true
+	return true, name
 end
 
 function MidasUI:SetTheme(nameOrTheme)
 	local theme, themeName = Theme:Get(nameOrTheme)
+	local valid = true
 	if typeof(nameOrTheme) == "string" and not Theme.Registry[nameOrTheme] then
-		self:_Warn("Unknown theme '" .. nameOrTheme .. "', falling back to " .. themeName)
+		valid = false
+		self:_Warn("Theme", "Unknown theme '" .. nameOrTheme .. "', falling back to " .. themeName)
+	elseif typeof(nameOrTheme) ~= "string" and typeof(nameOrTheme) ~= "table" and nameOrTheme ~= nil then
+		valid = false
+		self:_Warn("Theme", "Invalid theme value, falling back to " .. themeName)
 	end
 
 	self.Theme = theme
@@ -130,11 +159,12 @@ function MidasUI:SetTheme(nameOrTheme)
 	Notify:SetTheme(Context)
 	Tooltip:SetTheme(Context)
 	Dialog:SetTheme(Context)
+	return valid, themeName
 end
 
 function MidasUI:CreateWindow(options)
 	if options ~= nil and typeof(options) ~= "table" then
-		self:_Warn("CreateWindow expected an options table")
+		self:_Warn("API", "CreateWindow expected an options table")
 		options = {}
 	end
 
@@ -149,11 +179,12 @@ end
 
 function MidasUI:SetFlag(flag, value, fireCallback)
 	if typeof(flag) ~= "string" or flag == "" then
-		self:_Warn("SetFlag ignored: flag must be a non-empty string")
-		return
+		self:_Warn("Flag", "SetFlag ignored: flag must be a non-empty string")
+		return false
 	end
 
 	Flags:Set(self, flag, value, fireCallback)
+	return true
 end
 
 function MidasUI:_BindElement(element, options)
@@ -170,6 +201,7 @@ end
 
 function MidasUI:_RegisterDependency(element, dependency)
 	if typeof(dependency) ~= "table" or typeof(dependency.Flag) ~= "string" then
+		self:_Warn("Dependency", "Ignored invalid DependsOn configuration")
 		return
 	end
 
@@ -184,9 +216,17 @@ function MidasUI:_RegisterDependency(element, dependency)
 	self:_ApplyDependency(record)
 end
 
+function MidasUI:_UnregisterDependencies(element)
+	for index = #self._dependencies, 1, -1 do
+		if self._dependencies[index].Element == element then
+			table.remove(self._dependencies, index)
+		end
+	end
+end
+
 function MidasUI:_ApplyDependency(record)
 	local element = record.Element
-	if not element or not element.Instance then
+	if not element or element.Destroyed or not element.Instance then
 		return
 	end
 
@@ -227,9 +267,17 @@ function MidasUI:_SetElementVisible(element, visible)
 			element:SetExpanded(false, true)
 		end
 
-		element._midasOriginalSize = instance.Size
+		if instance.Visible then
+			element._midasOriginalSize = instance.Size
+		end
 		instance.Visible = false
-		instance.Size = UDim2.new(element._midasOriginalSize.X.Scale, element._midasOriginalSize.X.Offset, 0, 0)
+		if element._midasOriginalSize then
+			instance.Size = UDim2.new(element._midasOriginalSize.X.Scale, element._midasOriginalSize.X.Offset, 0, 0)
+		end
+	end
+
+	if not visible and self._tooltipFrame then
+		Tooltip:Hide(Context)
 	end
 end
 
@@ -265,29 +313,37 @@ function MidasUI:ListConfigs()
 end
 
 function MidasUI:Notify(options)
-	Notify:Show(Context, options or {})
+	if options ~= nil and typeof(options) ~= "table" then
+		self:_Warn("Notification", "Notify expected an options table")
+		options = {}
+	end
+	return Notify:Show(Context, options or {})
 end
 
 function MidasUI:Dialog(options)
+	if options ~= nil and typeof(options) ~= "table" then
+		self:_Warn("Dialog", "Dialog expected an options table")
+		options = {}
+	end
 	return Dialog:Show(Context, options or {})
 end
 
 function MidasUI:Info(options)
-	options = options or {}
-	options.Type = "Info"
-	return self:Dialog(options)
+	local values = typeof(options) == "table" and table.clone(options) or {}
+	values.Type = "Info"
+	return self:Dialog(values)
 end
 
 function MidasUI:Confirm(options)
-	options = options or {}
-	options.Type = "Confirm"
-	return self:Dialog(options)
+	local values = typeof(options) == "table" and table.clone(options) or {}
+	values.Type = "Confirm"
+	return self:Dialog(values)
 end
 
 function MidasUI:Prompt(options)
-	options = options or {}
-	options.Type = "Input"
-	return self:Dialog(options)
+	local values = typeof(options) == "table" and table.clone(options) or {}
+	values.Type = "Input"
+	return self:Dialog(values)
 end
 
 function MidasUI:_CleanupOverlays()
@@ -350,6 +406,7 @@ function MidasUI:Destroy()
 	self:_CleanupWindowRuntime()
 
 	self._keybindsReady = false
+	return self
 end
 
 return MidasUI

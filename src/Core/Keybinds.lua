@@ -30,11 +30,11 @@ function Keybinds:Init(library)
 				if bind.Mode == "Hold" then
 					if not bind.Holding then
 						bind.Holding = true
-						task.spawn(bind.Callback, true, bind.KeyCode)
+						library:_InvokeCallback("Keybind", bind.Callback, true, bind.KeyCode)
 					end
 				elseif not bind.Holding then
 					bind.Holding = true
-					task.spawn(bind.Callback, bind.KeyCode)
+					library:_InvokeCallback("Keybind", bind.Callback, bind.KeyCode)
 				end
 			end
 		end
@@ -50,7 +50,7 @@ function Keybinds:Init(library)
 				bind.Holding = false
 
 				if bind.Mode == "Hold" and bind.Enabled ~= false then
-					task.spawn(bind.Callback, false, bind.KeyCode)
+					library:_InvokeCallback("Keybind", bind.Callback, false, bind.KeyCode)
 				end
 			end
 		end
@@ -102,7 +102,7 @@ function Keybinds:Unregister(library, keybind)
 	local entry = library.Keybinds[keybind.Flag]
 	if entry and entry.Element == keybind then
 		if entry.Holding and entry.Mode == "Hold" and entry.KeyCode ~= nil and entry.Enabled ~= false then
-			task.spawn(entry.Callback, false, entry.KeyCode)
+			library:_InvokeCallback("Keybind", entry.Callback, false, entry.KeyCode)
 		end
 
 		entry.Holding = false
@@ -117,7 +117,7 @@ function Keybinds:SetKeyCode(library, flag, keyCode)
 	end
 
 	if entry.Holding and entry.Mode == "Hold" and entry.KeyCode ~= keyCode and entry.Enabled ~= false then
-		task.spawn(entry.Callback, false, entry.KeyCode)
+		library:_InvokeCallback("Keybind", entry.Callback, false, entry.KeyCode)
 	end
 
 	entry.Holding = false
@@ -138,7 +138,7 @@ function Keybinds:SetEnabled(library, flag, enabled)
 
 	if enabled == false and entry.Holding then
 		if entry.Mode == "Hold" and entry.KeyCode ~= nil then
-			task.spawn(entry.Callback, false, entry.KeyCode)
+			library:_InvokeCallback("Keybind", entry.Callback, false, entry.KeyCode)
 		end
 		entry.Holding = false
 	end

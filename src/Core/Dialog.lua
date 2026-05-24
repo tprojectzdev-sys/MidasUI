@@ -19,12 +19,19 @@ function Dialog:Init(context)
 	library._dialogGui = gui
 end
 
-function Dialog:Close(context)
+function Dialog:Close(context, controller)
 	local library = context.Library
-	if library._activeDialog and library._activeDialog.Gui then
-		library._activeDialog.Gui:Destroy()
+	local dialog = library._activeDialog
+	if controller and dialog and dialog.Controller ~= controller then
+		return
 	end
-	library._activeDialog = nil
+
+	if dialog and dialog.Gui then
+		dialog.Gui:Destroy()
+	end
+	if not controller or not dialog or dialog.Controller == controller then
+		library._activeDialog = nil
+	end
 end
 
 function Dialog:SetTheme(context)
@@ -65,6 +72,10 @@ function Dialog:Show(context, options)
 	local utility = context.Utility
 	local theme = library.Theme
 	local dialogType = options.Type or "Info"
+	if dialogType ~= "Info" and dialogType ~= "Confirm" and dialogType ~= "Input" then
+		library:_Warn("Dialog", "Unknown dialog type '" .. tostring(dialogType) .. "'; using Info")
+		dialogType = "Info"
+	end
 	local callbacks = {
 		Confirm = options.OnConfirm or options.ConfirmCallback or options.Callback,
 		Cancel = options.OnCancel or options.CancelCallback,
@@ -156,7 +167,8 @@ function Dialog:Show(context, options)
 	local buttons = {}
 
 	function controller:Close()
-		Dialog:Close(context)
+		Dialog:Close(context, self)
+		return self
 	end
 
 	local function addButton(name, text, primary, callback)
@@ -176,11 +188,11 @@ function Dialog:Show(context, options)
 		table.insert(buttons, button)
 
 		button.MouseButton1Click:Connect(function()
-			if callback then
+			if callback ~= nil then
 				if dialogType == "Input" and name == "Confirm" then
-					task.spawn(callback, inputBox and inputBox.Text or "")
+					library:_InvokeCallback("Dialog", callback, inputBox and inputBox.Text or "")
 				else
-					task.spawn(callback)
+					library:_InvokeCallback("Dialog", callback)
 				end
 			end
 			controller:Close()

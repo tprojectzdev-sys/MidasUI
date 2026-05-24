@@ -137,7 +137,13 @@ function Config:Save(library, profile)
 		Window = library._windowSettings or {},
 	}
 
-	local encoded = HttpService:JSONEncode(payload)
+	local encodedOk, encoded = pcall(function()
+		return HttpService:JSONEncode(payload)
+	end)
+	if not encodedOk then
+		return false, "Config values could not be encoded"
+	end
+
 	local ok, err = pcall(function()
 		files.writefile(path, encoded)
 	end)
@@ -173,21 +179,33 @@ function Config:Load(library, profile)
 	end
 
 	local ok, decoded = pcall(function()
-		return HttpService:JSONDecode(files.readfile(path))
+		local content = files.readfile(path)
+		if typeof(content) ~= "string" then
+			error("Config content is not a string")
+		end
+		return HttpService:JSONDecode(content)
 	end)
 
 	if not ok or typeof(decoded) ~= "table" then
 		return false, "Config JSON could not be decoded"
 	end
 
-	if typeof(decoded.Flags) == "table" then
+	if decoded.Flags ~= nil and typeof(decoded.Flags) ~= "table" then
+		library:_Warn("Config", "Ignored invalid Flags object in config")
+	elseif typeof(decoded.Flags) == "table" then
 		for flag, value in pairs(decoded.Flags) do
-			library:SetFlag(flag, self:DeserializeValue(value), false)
+			if typeof(flag) == "string" and flag ~= "" then
+				library:SetFlag(flag, self:DeserializeValue(value), false)
+			else
+				library:_Warn("Config", "Ignored an invalid flag name in config")
+			end
 		end
 	end
 
 	if typeof(decoded.Theme) == "string" then
 		library:SetTheme(decoded.Theme)
+	elseif decoded.Theme ~= nil then
+		library:_Warn("Config", "Ignored invalid saved theme value")
 	end
 
 	if typeof(decoded.Window) == "table" then
@@ -197,7 +215,9 @@ function Config:Load(library, profile)
 		if window and window.Main then
 			local size = decoded.Window.Size
 			if typeof(size) == "table" and tonumber(size.X) and tonumber(size.Y) then
-				window.Main.Size = UDim2.fromOffset(size.X, size.Y)
+				local width = math.clamp(tonumber(size.X), 420, 980)
+				local height = math.clamp(tonumber(size.Y), 320, 720)
+				window.Main.Size = UDim2.fromOffset(width, height)
 				window._restoreSize = window.Main.Size
 			end
 

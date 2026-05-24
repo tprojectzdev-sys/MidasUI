@@ -11,11 +11,17 @@ end
 
 function Slider.new(context, section, options)
 	options = options or {}
+	local flag = options.Flag
+	if flag ~= nil and (typeof(flag) ~= "string" or flag == "") then
+		context.Library:_Warn("Flag", "Slider ignored an invalid Flag value")
+		flag = nil
+	end
+
 	local min = tonumber(options.Min) or 0
 	local max = tonumber(options.Max) or 100
 	if max < min then
 		min, max = max, min
-		context.Library:_Warn("Slider '" .. tostring(options.Name or "Slider") .. "' had Max below Min; values were swapped")
+		context.Library:_Warn("Slider", "'" .. tostring(options.Name or "Slider") .. "' had Max below Min; values were swapped")
 	end
 
 	local increment = math.abs(tonumber(options.Increment) or 1)
@@ -29,13 +35,13 @@ function Slider.new(context, section, options)
 		Library = context.Library,
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
-		Name = options.Name or "Slider",
-		Flag = options.Flag,
+		Name = tostring(options.Name or "Slider"),
+		Flag = flag,
 		Min = min,
 		Max = max,
 		Increment = increment,
 		Value = tonumber(options.Default) or min,
-		Callback = options.Callback or function() end,
+		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
 		Dragging = false,
 		Enabled = true,
@@ -189,7 +195,12 @@ function Slider:SetValue(value, fireCallback)
 		return self
 	end
 
-	local nextValue = snap(tonumber(value) or self.Min, self.Min, self.Max, self.Increment)
+	if tonumber(value) == nil then
+		self.Library:_Warn("Slider", "'" .. self.Name .. "' ignored a non-numeric value")
+		return self
+	end
+
+	local nextValue = snap(tonumber(value), self.Min, self.Max, self.Increment)
 	local changed = self.Value ~= nextValue
 	self.Value = nextValue
 
@@ -203,7 +214,7 @@ function Slider:SetValue(value, fireCallback)
 	self.Utility:Tween(self.Knob, 0.12, { Position = UDim2.fromScale(ratio, 0.5) })
 
 	if changed and fireCallback ~= false then
-		task.spawn(self.Callback, self.Value)
+		self.Library:_InvokeCallback("Slider", self.Callback, self.Value)
 	end
 
 	return self
@@ -264,6 +275,10 @@ function Slider:SetText(text)
 end
 
 function Slider:SetCallback(callback)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Callback = typeof(callback) == "function" and callback or function() end
 	return self
 end
@@ -309,20 +324,24 @@ function Slider:SetTheme(theme)
 	self.Bar.BackgroundColor3 = theme.Background
 	self.Fill.BackgroundColor3 = theme.Accent
 	self.Knob.BackgroundColor3 = theme.Text
+	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
+	self:SetEnabled(self.Enabled)
 	return self
 end
 
 function Slider:Destroy()
 	if self.Destroyed then
-		return
+		return self
 	end
 
 	self.Destroyed = true
+	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)
 	if self.Instance then
 		self.Instance:Destroy()
 	end
+	return self
 end
 
 return Slider

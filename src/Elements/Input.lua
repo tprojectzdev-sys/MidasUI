@@ -3,17 +3,23 @@ Input.__index = Input
 
 function Input.new(context, section, options)
 	options = options or {}
+	local flag = options.Flag
+	if flag ~= nil and (typeof(flag) ~= "string" or flag == "") then
+		context.Library:_Warn("Flag", "Input ignored an invalid Flag value")
+		flag = nil
+	end
+
 	local self = setmetatable({
 		Context = context,
 		Section = section,
 		Library = context.Library,
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
-		Name = options.Name or "Input",
-		Flag = options.Flag,
+		Name = tostring(options.Name or "Input"),
+		Flag = flag,
 		Value = options.Default or "",
-		Placeholder = options.Placeholder or "",
-		Callback = options.Callback or function() end,
+		Placeholder = tostring(options.Placeholder or ""),
+		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
 		Enabled = true,
 	}, Input)
@@ -117,7 +123,7 @@ function Input:SetValue(value, fireCallback)
 	end
 
 	if changed and fireCallback ~= false then
-		task.spawn(self.Callback, self.Value)
+		self.Library:_InvokeCallback("Input", self.Callback, self.Value)
 	end
 	return self
 end
@@ -182,6 +188,10 @@ function Input:SetPlaceholder(placeholder)
 end
 
 function Input:SetCallback(callback)
+	if self.Destroyed then
+		return self
+	end
+
 	self.Callback = typeof(callback) == "function" and callback or function() end
 	return self
 end
@@ -208,20 +218,24 @@ function Input:SetTheme(theme)
 	self.Box.BackgroundColor3 = theme.Background
 	self.Box.TextColor3 = theme.Text
 	self.Box.PlaceholderColor3 = theme.MutedText
+	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
+	self:SetEnabled(self.Enabled)
 	return self
 end
 
 function Input:Destroy()
 	if self.Destroyed then
-		return
+		return self
 	end
 
 	self.Destroyed = true
+	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)
 	if self.Instance then
 		self.Instance:Destroy()
 	end
+	return self
 end
 
 return Input
