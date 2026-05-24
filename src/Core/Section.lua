@@ -1,14 +1,24 @@
 local Section = {}
 Section.__index = Section
 
-function Section.new(context, tab, name)
+function Section.new(context, tab, options)
+	if typeof(options) ~= "table" then
+		options = { Name = options }
+	end
+	local template = tab.Window.Template or context.Templates.Registry.Default
+	local compact = template.Compact
+	if options.Compact ~= nil then
+		compact = options.Compact == true
+	end
 	local self = setmetatable({
 		Context = context,
 		Tab = tab,
 		Library = context.Library,
 		Utility = context.Utility,
 		Theme = context.Library.Theme,
-		Name = tostring(name or "Section"),
+		Name = tostring(options.Name or "Section"),
+		Template = template,
+		Compact = compact,
 		Elements = {},
 	}, Section)
 
@@ -20,22 +30,23 @@ function Section.new(context, tab, name)
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundColor3 = theme.Card,
+		BackgroundTransparency = template.SectionTransparency,
 		ClipsDescendants = false,
 		Parent = tab.Page,
 	})
 	utility:Corner(frame, 10)
 	utility:Stroke(frame, theme.Stroke, 0.3)
-	utility:Padding(frame, { X = 12, Y = 12 })
-	local layout = utility:List(frame, 8)
+	utility:Padding(frame, { X = template.SectionPadding, Y = template.SectionPadding })
+	local layout = utility:List(frame, template.SectionSpacing)
 
 	local title = utility:Create("TextLabel", {
 		Name = "Title",
-		Size = UDim2.new(1, 0, 0, 20),
+		Size = UDim2.new(1, 0, 0, compact and 18 or 20),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamSemibold,
 		Text = self.Name,
 		TextColor3 = theme.Text,
-		TextSize = 13,
+		TextSize = template.SectionTitleSize,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
 	})
@@ -78,6 +89,7 @@ function Section:_createElement(moduleName, options)
 
 	local element = self.Context.Elements[moduleName].new(self.Context, self, options or {})
 	table.insert(self.Elements, element)
+	self.Context.Commands:IndexObject(self.Library, element, moduleName)
 	return element
 end
 
@@ -119,6 +131,30 @@ end
 
 function Section:CreateDivider(options)
 	return self:_createElement("Divider", options)
+end
+
+function Section:CreateProgressBar(options)
+	return self:_createElement("ProgressBar", options)
+end
+
+function Section:CreateStatCard(options)
+	return self:_createElement("StatCard", options)
+end
+
+function Section:CreateStatusCard(options)
+	return self:CreateStatCard(options)
+end
+
+function Section:CreateLogPanel(options)
+	return self:_createElement("LogPanel", options)
+end
+
+function Section:CreateCallout(options)
+	return self:_createElement("Callout", options)
+end
+
+function Section:CreateActionRow(options)
+	return self:_createElement("ActionRow", options)
 end
 
 function Section:SetTheme(theme)

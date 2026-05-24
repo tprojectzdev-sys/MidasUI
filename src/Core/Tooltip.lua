@@ -14,6 +14,7 @@ function Tooltip:Init(context)
 		Name = "MidasUI_Tooltip",
 		IgnoreGuiInset = true,
 		ResetOnSpawn = false,
+		DisplayOrder = 300,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		Parent = utility:GetGuiParent(),
 	})
@@ -95,7 +96,7 @@ function Tooltip:Show(context, text)
 	label.Text = tostring(text)
 	frame.Visible = true
 	frame.BackgroundTransparency = 1
-	context.Utility:Tween(frame, 0.12, { BackgroundTransparency = 0.02 })
+	context.Utility:Tween(frame, context.Utility.Motion.Fast, { BackgroundTransparency = 0.02 })
 	self:Position(context, UserInputService:GetMouseLocation())
 end
 

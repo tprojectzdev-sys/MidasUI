@@ -21,6 +21,10 @@ function Keybinds:Init(library)
 			return
 		end
 
+		if library._IsCommandPaletteHotkey and library:_IsCommandPaletteHotkey(input) then
+			return
+		end
+
 		if UserInputService:GetFocusedTextBox() then
 			return
 		end

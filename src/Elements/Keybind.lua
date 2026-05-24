@@ -56,10 +56,11 @@ function Keybind.new(context, section, options)
 
 	local theme = self.Theme
 	local utility = self.Utility
+	local compact = section.Compact == true
 
 	local row = utility:Create("TextButton", {
 		Name = self.Name,
-		Size = UDim2.new(1, 0, 0, 42),
+		Size = UDim2.new(1, 0, 0, compact and 34 or 42),
 		BackgroundTransparency = 1,
 		Text = "",
 		AutoButtonColor = false,
@@ -73,7 +74,7 @@ function Keybind.new(context, section, options)
 		Font = Enum.Font.Gotham,
 		Text = self.Name,
 		TextColor3 = theme.Text,
-		TextSize = 13,
+		TextSize = compact and 12 or 13,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = row,
@@ -83,7 +84,7 @@ function Keybind.new(context, section, options)
 		Name = "Bind",
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, 0, 0.5, 0),
-		Size = UDim2.fromOffset(118, 32),
+		Size = UDim2.fromOffset(compact and 108 or 118, compact and 28 or 32),
 		BackgroundColor3 = theme.Background,
 		Font = Enum.Font.GothamMedium,
 		Text = keyName(self.Value),

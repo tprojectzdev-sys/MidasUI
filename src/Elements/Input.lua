@@ -26,10 +26,11 @@ function Input.new(context, section, options)
 
 	local theme = self.Theme
 	local utility = self.Utility
+	local compact = section.Compact == true
 
 	local frame = utility:Create("Frame", {
 		Name = self.Name,
-		Size = UDim2.new(1, 0, 0, 62),
+		Size = UDim2.new(1, 0, 0, compact and 52 or 62),
 		BackgroundTransparency = 1,
 		Parent = section.Frame,
 	})
@@ -41,7 +42,7 @@ function Input.new(context, section, options)
 		Font = Enum.Font.Gotham,
 		Text = self.Name,
 		TextColor3 = theme.Text,
-		TextSize = 13,
+		TextSize = compact and 12 or 13,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
@@ -49,8 +50,8 @@ function Input.new(context, section, options)
 
 	local box = utility:Create("TextBox", {
 		Name = "Box",
-		Position = UDim2.fromOffset(0, 26),
-		Size = UDim2.new(1, 0, 0, 34),
+		Position = UDim2.fromOffset(0, compact and 21 or 26),
+		Size = UDim2.new(1, 0, 0, compact and 30 or 34),
 		BackgroundColor3 = theme.Background,
 		ClearTextOnFocus = false,
 		Font = Enum.Font.Gotham,
@@ -58,7 +59,7 @@ function Input.new(context, section, options)
 		PlaceholderColor3 = theme.MutedText,
 		Text = tostring(self.Value),
 		TextColor3 = theme.Text,
-		TextSize = 13,
+		TextSize = compact and 12 or 13,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
 	})
@@ -87,11 +88,11 @@ function Input.new(context, section, options)
 			return
 		end
 
-		utility:Tween(box, 0.12, { BackgroundColor3 = self.Theme.Topbar })
+		utility:Tween(box, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Topbar })
 	end)
 
 	utility:Connect(self.Connections, box.FocusLost, function()
-		utility:Tween(box, 0.12, { BackgroundColor3 = self.Theme.Background })
+		utility:Tween(box, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Background })
 	end)
 
 	context.Flags:Register(self.Library, self.Flag, self)

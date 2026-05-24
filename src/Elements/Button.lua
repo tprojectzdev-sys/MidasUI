@@ -17,15 +17,16 @@ function Button.new(context, section, options)
 
 	local theme = self.Theme
 	local utility = self.Utility
+	local compact = section.Compact == true
 
 	local button = utility:Create("TextButton", {
 		Name = self.Name,
-		Size = UDim2.new(1, 0, 0, 38),
+		Size = UDim2.new(1, 0, 0, compact and 32 or 38),
 		BackgroundColor3 = theme.Background,
 		Font = Enum.Font.GothamMedium,
 		Text = self.Name,
 		TextColor3 = theme.Text,
-		TextSize = 13,
+		TextSize = compact and 12 or 13,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		AutoButtonColor = false,
 		Parent = section.Frame,
@@ -43,14 +44,14 @@ function Button.new(context, section, options)
 		if self.Enabled == false then
 			return
 		end
-		utility:Tween(button, 0.14, { BackgroundColor3 = self.Theme.Topbar })
+		utility:Tween(button, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Topbar })
 	end)
 
 	utility:Connect(self.Connections, button.MouseLeave, function()
 		if self.Enabled == false then
 			return
 		end
-		utility:Tween(button, 0.14, { BackgroundColor3 = self.Theme.Background })
+		utility:Tween(button, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Background })
 	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
@@ -64,14 +65,14 @@ function Button.new(context, section, options)
 		if self.Enabled == false then
 			return
 		end
-		utility:Tween(button, 0.08, { BackgroundTransparency = 0.18 })
+		utility:Tween(button, utility.Motion.Fast, { BackgroundTransparency = 0.18 })
 	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Up, function()
 		if self.Enabled == false then
 			return
 		end
-		utility:Tween(button, 0.1, { BackgroundTransparency = 0 })
+		utility:Tween(button, utility.Motion.Fast, { BackgroundTransparency = 0 })
 	end)
 
 	self.Library:_BindElement(self, options)

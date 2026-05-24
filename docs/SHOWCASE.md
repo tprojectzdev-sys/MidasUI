@@ -1,30 +1,54 @@
-# Showcase And Manual QA
+# V1.8 Showcase And Manual QA
 
-[src/Showcase.lua](../src/Showcase.lua) is the V1.5 interactive runtime QA surface. Replace `URL_HERE` with the raw URL for [dist/MidasUI.lua](../dist/MidasUI.lua), run it in the target runtime, and keep the F9 console visible. Debug mode is intentionally enabled in this file so invalid-input tests are visible.
+[src/Showcase.lua](../src/Showcase.lua) is the V1.8 interactive runtime QA surface. Replace `URL_HERE` with the raw URL for [dist/MidasUI.lua](../dist/MidasUI.lua), run it in the target runtime, and keep the F9 console visible. Debug mode is intentionally enabled so deliberate bad-input tests are visible.
 
 ## Checklist
 
 - Load `dist/MidasUI.lua` through its raw URL and verify it returns `MidasUI` and creates the window.
+- On first open, inspect the short dropping crown/reveal intro; confirm it completes cleanly and the compact crown topbar crest remains crisp.
+- In a minimal follow-up window, set `Intro = false` or `Animations = false` and verify immediate, usable creation without the reveal.
 - Check the F9 console: startup should not emit failures; debug warnings should occur only when triggering deliberate invalid-value tests.
 - Create or inspect every element: Button, Toggle, Slider, Dropdown, Input, Keybind, Paragraph, and Divider.
-- Exercise controller updates: text update, slider update, dropdown option replacement, toggle update, `Disable`/`Enable`/`Refresh`, `Hide`/`Show`, and destroyed-controller calls.
-- Use `SetFlag` buttons and confirm toggle/slider/dependency visuals immediately agree with stored state.
+- Press `Ctrl+K`; verify the palette opens above the window, auto-focuses search, closes with `Escape`, and toggles closed with `Ctrl+K`.
+- In the `Discovery` tab, run open/toggle/query actions; search for `slider`, `dropdown`, `dialogs`, and `theme`, then use `Up`, `Down`, and `Enter`.
+- Run `Palette: Keep Open Notification`; verify `CloseOnRun = false` leaves the palette active until explicitly closed.
+- Select an indexed tab, section, and element result; verify it navigates/scrolls without invoking a button or toggling a flag.
+- Print both search result tests and debug state; verify command and indexed-item counts appear.
+- From `V1.8 Searchable Workflow Templates`, open the `FarmingDashboard` demo and inspect StatusCard, ProgressBar, LogPanel, Callout, and ActionRow.
+- In the dashboard, run Start, Pause, the controller update, and Stop flows; verify progress flag updates, semantic line/callout colors, capped logs, and danger confirmation styling.
+- With the dashboard open, use commands `Dashboard: Start`, `Pause`, `Clear`, `Jump`, and `Reset`; close/destroy it and verify those commands disappear.
+- Open the `PowerPanel` demo; confirm compact sections remain readable and the toggle/slider/dropdown/keybind groups scroll without clipping.
+- Use the `Power Panel:` commands to jump to grouped settings, explicitly toggle the sample flag, and open its searchable mode dropdown.
+- Drag `Precision Slider (0.01)` slowly across negative and positive values; verify two-decimal text, smooth fill/knob movement, correct endpoints, and no stuck drag.
+- Exercise controller updates: text update, both slider updates, dropdown option replacement, toggle update, `Disable`/`Enable`/`Refresh`, `Hide`/`Show`, and destroyed-controller calls.
+- Use `SetFlag` actions for coarse and precision sliders and confirm displayed/filled values agree immediately.
 - Save and load named config profiles; run the default profile round trip; where possible test a missing and corrupt profile file.
 - Confirm slider out-of-range saved values clamp, invalid dropdown values do not replace the displayed option, and invalid keybind values do not clear a valid binding.
 - Rebind and trigger Toggle keybind mode once per press.
 - Trigger Hold keybind mode and confirm `true` on press and `false` on release; disable or destroy during hold where practical.
 - Focus the typing input and verify keybind callbacks do not fire while typing.
+- Keep the typing input focused and press `Ctrl+K`; verify ordinary input focus blocks palette activation.
 - Toggle the master dependency and inspect both hidden/restored and enabled/disabled dependent controls.
-- Switch through built-in, full custom, and partial custom themes while a dropdown, notification, tooltip, and dialog are visible.
+- Switch through built-in, full custom, and partial custom themes while a dropdown, notification, tooltip, dialog, and topbar crest are visible; compare contrast and gold treatment.
+- Repeat theme switching while the dashboard and power panel windows are open; new components must update their surface and semantic colors.
+- Run `Theme Switch With Palette Open`; verify the open palette recolors without visual residue.
 - Trigger an invalid theme and confirm safe fallback plus one debug-only categorized warning.
-- Show stacked notifications and run the notification cleanup test.
-- Open Info, Confirm, and Input dialogs; verify actions close the overlay and callbacks do not leave the UI unusable.
+- Run notification stack and animated exit tests; verify side-entry overshoot, side-exit, stable stacking, and `Close()` cleanup.
+- Run `Animated Hide / Show`; confirm the window leaves and returns smoothly without broken hitboxes.
+- Run `Minimize / Restore Regression`; confirm only the topbar remains while minimized and full content restores to the prior size.
+- Run both palette cleanup transition tests; verify minimize and hide close palette interaction cleanly before restoring the window.
+- Run `Restore Then Confirm Layer Test`; confirm the overlay and dialog card remain fully above the restored window.
+- Run `Palette Then Dialog Layer Test`; verify the dialog closes/replaces palette interaction and remains topmost.
+- Open Info, Confirm, and Input dialogs separately; verify actions close the overlay and callbacks do not leave the UI unusable.
+- Press `Enter` and `Escape` in dialogs and verify confirm/cancel behavior; type in the prompt before confirming.
+- Open `Long Dropdown`; type to filter, use arrows and `Enter`, verify the selected flag remains valid, then reopen and confirm the filter reset.
+- Trigger the dashboard Stop action and verify its danger confirm remains above every open window after minimize/restore or hide/show.
 - Hover tooltip-bearing elements, then hide/destroy the related item or close the window and verify the tooltip disappears.
 - Close/destroy the window and verify no dialog/tooltip overlay remains; reopen or execute the bundle repeatedly where the runtime permits.
 
 ## Intentional Diagnostic Tests
 
-The `Bad Values Stay Safe` action sends invalid values to a slider, dropdown, and toggle. Their displayed values should remain unchanged and debug mode should report categorized warnings. `Invalid Theme Warning` verifies fallback behavior.
+The `Bad Values Stay Safe` action sends invalid values to sliders, dropdown, and toggle. Their displayed values should remain unchanged and debug mode should report categorized warnings. `Invalid Theme Warning` verifies fallback behavior. Dashboard commands cover owner-scoped cleanup and `SetFlag` propagation; discovery buttons cover command/index search and overlay behavior.
 
 ## Manual Coverage Boundary
 

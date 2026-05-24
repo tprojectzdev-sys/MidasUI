@@ -2,7 +2,7 @@ local MidasUI = loadstring(game:HttpGet("URL_HERE"))()
 
 local Window = MidasUI:CreateWindow({
 	Title = "MidasUI",
-	Subtitle = "V1.5 Example",
+	Subtitle = "V1.8 Example",
 	Theme = "DarkGold",
 	ConfigFolder = "MidasExample",
 })
@@ -17,6 +17,11 @@ local Enabled = General:CreateToggle({
 })
 
 local Status = General:CreateParagraph("Status: ready")
+local Progress = General:CreateProgressBar({
+	Name = "Setup Progress",
+	Value = 20,
+	Status = "Ready",
+})
 
 General:CreateSlider({
 	Name = "Volume",
@@ -33,10 +38,27 @@ General:CreateButton({
 	Callback = function()
 		Enabled:Set(true)
 		Status:SetText("Status: enabled")
+		Progress:SetStatus("Applied"):Set(100)
 		MidasUI:Notify({
 			Title = "MidasUI",
 			Content = "Settings applied.",
 			Duration = 3,
 		})
+	end,
+})
+
+Window:RegisterCommand({
+	Title = "Apply Settings",
+	Description = "Run the same beginner example action.",
+	Callback = function()
+		Enabled:Set(true)
+		Status:SetText("Status: enabled from command palette")
+	end,
+})
+
+General:CreateButton({
+	Name = "Open Command Palette",
+	Callback = function()
+		MidasUI:OpenCommandPalette()
 	end,
 })

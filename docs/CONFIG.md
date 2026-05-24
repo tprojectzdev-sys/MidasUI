@@ -11,6 +11,22 @@ local profiles = MidasUI:ListConfigs()
 local ok, err = MidasUI:DeleteConfig("combat")
 ```
 
+## Palette Actions
+
+Config operations remain explicit. Register only the profile operations appropriate for the interface:
+
+```lua
+Window:RegisterCommand({
+	Title = "Profile: Save Current",
+	Category = "Profiles",
+	Callback = function()
+		MidasUI:SaveConfig("default")
+	end,
+})
+```
+
+Indexed search may locate profile controls, but it never saves or loads a profile without a registered action.
+
 Set a folder when constructing a window:
 
 ```lua
@@ -34,6 +50,7 @@ Profile names are sanitized into safe filenames: unsupported characters become u
 - Corrupt JSON returns `false, "Config JSON could not be decoded"` without applying data.
 - Invalid flag collections, flag names, and theme fields are ignored safely with debug-only diagnostics.
 - Bound slider values are clamped and snapped to their current range.
+- Bound progress-bar values are clamped to their configured range.
 - Bound dropdown values not present in the current option list are rejected.
 - Bound toggles and keybinds reject invalid value types.
 - Dependencies refresh after loading.

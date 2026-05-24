@@ -13,7 +13,7 @@ function Divider.new(context, section, options)
 
 	local frame = self.Utility:Create("Frame", {
 		Name = "Divider",
-		Size = UDim2.new(1, 0, 0, 9),
+		Size = UDim2.new(1, 0, 0, section.Compact and 7 or 9),
 		BackgroundTransparency = 1,
 		Visible = options.Visible ~= false,
 		Parent = section.Frame,

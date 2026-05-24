@@ -3,10 +3,39 @@ local UserInputService = game:GetService("UserInputService")
 local Slider = {}
 Slider.__index = Slider
 
-local function snap(value, min, max, increment)
+local function decimalPlaces(value)
+	local text = string.format("%.6f", math.abs(value))
+	text = string.gsub(text, "0+$", "")
+	local decimal = string.match(text, "%.(%d+)$")
+	return decimal and #decimal or 0
+end
+
+local function round(value, precision)
+	local factor = 10 ^ precision
+	local scaled = value * factor
+	local rounded = scaled >= 0 and math.floor(scaled + 0.5) or math.ceil(scaled - 0.5)
+	return rounded / factor
+end
+
+local function snap(value, min, max, increment, precision)
 	increment = increment or 1
-	local rounded = math.floor(((value - min) / increment) + 0.5) * increment + min
-	return math.clamp(rounded, min, max)
+	local clamped = math.clamp(value, min, max)
+	if max == min or clamped <= min then
+		return round(min, precision)
+	end
+	if clamped >= max then
+		return round(max, precision)
+	end
+
+	local steps = math.floor(((clamped - min) / increment) + 0.5)
+	return math.clamp(round(min + (steps * increment), precision), min, max)
+end
+
+local function formatValue(value, precision)
+	if precision <= 0 then
+		return string.format("%.0f", value)
+	end
+	return string.format("%." .. tostring(precision) .. "f", value)
 end
 
 function Slider.new(context, section, options)
@@ -24,10 +53,7 @@ function Slider.new(context, section, options)
 		context.Library:_Warn("Slider", "'" .. tostring(options.Name or "Slider") .. "' had Max below Min; values were swapped")
 	end
 
-	local increment = math.abs(tonumber(options.Increment) or 1)
-	if increment <= 0 then
-		increment = 1
-	end
+	local increment = math.max(math.abs(tonumber(options.Increment) or 1), 0.000001)
 
 	local self = setmetatable({
 		Context = context,
@@ -40,19 +66,23 @@ function Slider.new(context, section, options)
 		Min = min,
 		Max = max,
 		Increment = increment,
+		Precision = math.max(decimalPlaces(min), decimalPlaces(max), decimalPlaces(increment)),
 		Value = tonumber(options.Default) or min,
 		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
+		Tweens = {},
 		Dragging = false,
+		DragInput = nil,
 		Enabled = true,
 	}, Slider)
 
 	local theme = self.Theme
 	local utility = self.Utility
+	local compact = section.Compact == true
 
 	local frame = utility:Create("Frame", {
 		Name = self.Name,
-		Size = UDim2.new(1, 0, 0, 58),
+		Size = UDim2.new(1, 0, 0, compact and 48 or 58),
 		BackgroundTransparency = 1,
 		Parent = section.Frame,
 	})
@@ -64,7 +94,7 @@ function Slider.new(context, section, options)
 		Font = Enum.Font.Gotham,
 		Text = self.Name,
 		TextColor3 = theme.Text,
-		TextSize = 13,
+		TextSize = compact and 12 or 13,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
@@ -78,15 +108,15 @@ function Slider.new(context, section, options)
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium,
 		TextColor3 = theme.Accent,
-		TextSize = 13,
+		TextSize = compact and 12 or 13,
 		TextXAlignment = Enum.TextXAlignment.Right,
 		Parent = frame,
 	})
 
 	local bar = utility:Create("TextButton", {
 		Name = "Bar",
-		Position = UDim2.fromOffset(0, 34),
-		Size = UDim2.new(1, 0, 0, 10),
+		Position = UDim2.fromOffset(0, compact and 29 or 34),
+		Size = UDim2.new(1, 0, 0, compact and 8 or 10),
 		BackgroundColor3 = theme.Background,
 		Text = "",
 		AutoButtonColor = false,
@@ -127,11 +157,11 @@ function Slider.new(context, section, options)
 		end
 
 		local ratio = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
-		local value = snap(self.Min + ((self.Max - self.Min) * ratio), self.Min, self.Max, self.Increment)
+		local value = snap(self.Min + ((self.Max - self.Min) * ratio), self.Min, self.Max, self.Increment, self.Precision)
 		if self.Flag then
-			self.Library:SetFlag(self.Flag, value, true)
+			self.Library:SetFlag(self.Flag, value, true, true)
 		else
-			self:SetValue(value, true)
+			self:SetValue(value, true, true)
 		end
 	end
 
@@ -142,6 +172,7 @@ function Slider.new(context, section, options)
 
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			self.Dragging = true
+			self.DragInput = input
 			updateFromPosition(input.Position.X)
 		end
 	end)
@@ -151,7 +182,7 @@ function Slider.new(context, section, options)
 			return
 		end
 
-		utility:Tween(knob, 0.12, { Size = UDim2.fromOffset(18, 18) })
+		utility:Tween(knob, utility.Motion.Fast, { Size = UDim2.fromOffset(18, 18) })
 	end)
 
 	utility:Connect(self.Connections, bar.MouseLeave, function()
@@ -159,7 +190,7 @@ function Slider.new(context, section, options)
 			return
 		end
 
-		utility:Tween(knob, 0.12, { Size = UDim2.fromOffset(16, 16) })
+		utility:Tween(knob, utility.Motion.Fast, { Size = UDim2.fromOffset(16, 16) })
 	end)
 
 	utility:Connect(self.Connections, UserInputService.InputChanged, function(input)
@@ -173,9 +204,13 @@ function Slider.new(context, section, options)
 	end)
 
 	utility:Connect(self.Connections, UserInputService.InputEnded, function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		local isMouseRelease = self.DragInput
+			and self.DragInput.UserInputType == Enum.UserInputType.MouseButton1
+			and input.UserInputType == Enum.UserInputType.MouseButton1
+		if self.Dragging and (isMouseRelease or input == self.DragInput) then
 			self.Dragging = false
-			utility:Tween(knob, 0.12, { Size = UDim2.fromOffset(16, 16) })
+			self.DragInput = nil
+			utility:Tween(knob, utility.Motion.Fast, { Size = UDim2.fromOffset(16, 16) })
 		end
 	end)
 
@@ -190,7 +225,7 @@ function Slider:GetValue()
 	return self.Value
 end
 
-function Slider:SetValue(value, fireCallback)
+function Slider:SetValue(value, fireCallback, instant)
 	if self.Destroyed then
 		return self
 	end
@@ -200,7 +235,7 @@ function Slider:SetValue(value, fireCallback)
 		return self
 	end
 
-	local nextValue = snap(tonumber(value), self.Min, self.Max, self.Increment)
+	local nextValue = snap(tonumber(value), self.Min, self.Max, self.Increment, self.Precision)
 	local changed = self.Value ~= nextValue
 	self.Value = nextValue
 
@@ -208,10 +243,23 @@ function Slider:SetValue(value, fireCallback)
 		self.Library.Flags[self.Flag] = self.Value
 	end
 
-	local ratio = (self.Value - self.Min) / math.max(self.Max - self.Min, 1)
-	self.ValueLabel.Text = tostring(self.Value)
-	self.Utility:Tween(self.Fill, 0.12, { Size = UDim2.fromScale(ratio, 1) })
-	self.Utility:Tween(self.Knob, 0.12, { Position = UDim2.fromScale(ratio, 0.5) })
+	local range = self.Max - self.Min
+	local ratio = range > 0 and (self.Value - self.Min) / range or 0
+	self.ValueLabel.Text = formatValue(self.Value, self.Precision)
+	if instant then
+		for _, key in ipairs({ "Fill", "Knob" }) do
+			local tween = self.Tweens[key]
+			if tween then
+				tween:Cancel()
+				self.Tweens[key] = nil
+			end
+		end
+		self.Fill.Size = UDim2.fromScale(ratio, 1)
+		self.Knob.Position = UDim2.fromScale(ratio, 0.5)
+	else
+		self.Utility:TweenTracked(self.Tweens, "Fill", self.Fill, self.Utility.Motion.Fast, { Size = UDim2.fromScale(ratio, 1) })
+		self.Utility:TweenTracked(self.Tweens, "Knob", self.Knob, self.Utility.Motion.Fast, { Position = UDim2.fromScale(ratio, 0.5) })
+	end
 
 	if changed and fireCallback ~= false then
 		self.Library:_InvokeCallback("Slider", self.Callback, self.Value)
@@ -234,7 +282,8 @@ function Slider:SetEnabled(enabled)
 
 	if not self.Enabled then
 		self.Dragging = false
-		self.Utility:Tween(self.Knob, 0.12, { Size = UDim2.fromOffset(16, 16) })
+		self.DragInput = nil
+		self.Utility:Tween(self.Knob, self.Utility.Motion.Fast, { Size = UDim2.fromOffset(16, 16) })
 	end
 	return self
 end
@@ -301,6 +350,7 @@ function Slider:SetRange(min, max, increment)
 	self.Min = min
 	self.Max = max
 	self.Increment = math.max(math.abs(tonumber(increment) or self.Increment), 0.0001)
+	self.Precision = math.max(decimalPlaces(self.Min), decimalPlaces(self.Max), decimalPlaces(self.Increment))
 	self:SetValue(self.Value, false)
 	return self
 end
@@ -335,6 +385,7 @@ function Slider:Destroy()
 	end
 
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)

@@ -17,10 +17,11 @@ function Tab.new(context, window, options)
 
 	local theme = self.Theme
 	local utility = self.Utility
+	local template = window.Template or context.Templates.Registry.Default
 
 	local button = utility:Create("TextButton", {
 		Name = self.Name .. "Tab",
-		Size = UDim2.new(1, 0, 0, 38),
+		Size = UDim2.new(1, 0, 0, template.Compact and 33 or 38),
 		BackgroundColor3 = theme.Card,
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium,
@@ -32,13 +33,13 @@ function Tab.new(context, window, options)
 
 	local icon = utility:Create("TextLabel", {
 		Name = "Icon",
-		Position = UDim2.fromOffset(10, 8),
-		Size = UDim2.fromOffset(22, 22),
+		Position = UDim2.fromOffset(10, template.Compact and 6 or 8),
+		Size = UDim2.fromOffset(22, template.Compact and 21 or 22),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
 		Text = utility:IconText(self.Icon),
 		TextColor3 = theme.MutedText,
-		TextSize = 13,
+		TextSize = template.Compact and 12 or 13,
 		Parent = button,
 	})
 
@@ -50,7 +51,7 @@ function Tab.new(context, window, options)
 		Font = Enum.Font.GothamMedium,
 		Text = self.Name,
 		TextColor3 = theme.MutedText,
-		TextSize = 13,
+		TextSize = template.Compact and 12 or 13,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = button,
 	})
@@ -70,15 +71,16 @@ function Tab.new(context, window, options)
 		Visible = false,
 		Parent = window.Content,
 	})
-	utility:Padding(page, { X = 14, Y = 14 })
-	local pageList = utility:List(page, 10)
+	utility:Padding(page, { X = template.PagePadding, Y = template.PagePadding })
+	local pageList = utility:List(page, template.PageSpacing)
 
 	self.Button = button
 	self.IconLabel = icon
 	self.Label = label
 	self.Page = page
 	self.PageList = pageList
-	self.CanvasConnection = utility:BindCanvas(page, pageList, 28)
+	self.CanvasPadding = template.CanvasPadding
+	self.CanvasConnection = utility:BindCanvas(page, pageList, self.CanvasPadding)
 	self._themeObjects = {
 		{ button, "BackgroundColor3", "Card" },
 		{ icon, "TextColor3", "MutedText" },
@@ -92,14 +94,15 @@ function Tab.new(context, window, options)
 	return self
 end
 
-function Tab:CreateSection(name)
+function Tab:CreateSection(options)
 	if self.Destroyed then
 		self.Library:_Warn("Lifecycle", "CreateSection ignored: tab is destroyed")
 		return nil
 	end
 
-	local section = self.Context.Section.new(self.Context, self, name)
+	local section = self.Context.Section.new(self.Context, self, options)
 	table.insert(self.Sections, section)
+	self.Context.Commands:IndexObject(self.Library, section, "Section")
 	return section
 end
 
@@ -158,7 +161,7 @@ function Tab:RefreshLayout()
 	end
 
 	if self.CanvasConnection and self.PageList then
-		self.Page.CanvasSize = UDim2.fromOffset(0, self.PageList.AbsoluteContentSize.Y + 28)
+		self.Page.CanvasSize = UDim2.fromOffset(0, self.PageList.AbsoluteContentSize.Y + self.CanvasPadding)
 	end
 	return self
 end

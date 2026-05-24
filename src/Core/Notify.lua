@@ -12,6 +12,7 @@ function Notify:Init(context)
 		Name = "MidasUI_Notifications",
 		IgnoreGuiInset = true,
 		ResetOnSpawn = false,
+		DisplayOrder = 220,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		Parent = utility:GetGuiParent(),
 	})
@@ -62,6 +63,8 @@ function Notify:Show(context, options)
 		end
 	end
 
+	local tweens = {}
+	local closing = false
 	local frame = utility:Create("Frame", {
 		Name = "Notification",
 		Size = UDim2.new(1, 0, 0, 86),
@@ -114,36 +117,54 @@ function Notify:Show(context, options)
 	title.TextTransparency = 1
 	content.TextTransparency = 1
 	frame.BackgroundTransparency = 1
-	utility:Tween(frame, 0.22, {
-		Position = UDim2.fromOffset(0, 0),
+	utility:TweenTracked(tweens, "Frame", frame, utility.Motion.Reveal, {
+		Position = UDim2.fromOffset(-8, 0),
 		BackgroundTransparency = 0.04,
-	})
-	utility:Tween(title, 0.22, { TextTransparency = 0 })
-	utility:Tween(content, 0.22, { TextTransparency = 0 })
+	}, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	utility:Tween(title, utility.Motion.Standard, { TextTransparency = 0 })
+	utility:Tween(content, utility.Motion.Standard, { TextTransparency = 0 })
+	task.delay(utility.Motion.Standard, function()
+		if frame.Parent and not closing then
+			utility:TweenTracked(tweens, "Frame", frame, utility.Motion.Fast, {
+				Position = UDim2.fromOffset(0, 0),
+			}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		end
+	end)
 
 	table.insert(library._notifications, frame)
 
+	local function animateOut()
+		if closing or not frame or not frame.Parent then
+			return
+		end
+
+		closing = true
+		local tween = utility:TweenTracked(tweens, "Frame", frame, utility.Motion.Exit, {
+			Position = UDim2.fromOffset(330, 0),
+			BackgroundTransparency = 1,
+		}, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+		utility:Tween(title, utility.Motion.Fast, { TextTransparency = 1 })
+		utility:Tween(content, utility.Motion.Fast, { TextTransparency = 1 })
+		tween.Completed:Connect(function()
+			removeFrame(frame)
+			utility:CancelTweens(tweens)
+			if frame.Parent then
+				frame:Destroy()
+			end
+		end)
+	end
+
 	local controller = {}
 	function controller:Close()
-		removeFrame(frame)
-		if frame and frame.Parent then
-			frame:Destroy()
-		end
+		animateOut()
 		return self
 	end
 
 	task.delay(duration, function()
-		if not frame.Parent then
+		if not frame.Parent or closing then
 			return
 		end
-
-		local tween = utility:Tween(frame, 0.2, {
-			Position = UDim2.fromOffset(320, 0),
-			BackgroundTransparency = 1,
-		})
-		tween.Completed:Wait()
-		removeFrame(frame)
-		frame:Destroy()
+		animateOut()
 	end)
 
 	return controller

@@ -12,6 +12,7 @@ function Dialog:Init(context)
 		Name = "MidasUI_Dialogs",
 		IgnoreGuiInset = true,
 		ResetOnSpawn = false,
+		DisplayOrder = 400,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		Parent = utility:GetGuiParent(),
 	})
@@ -26,6 +27,9 @@ function Dialog:Close(context, controller)
 		return
 	end
 
+	if dialog and dialog.Connections then
+		context.Utility:DisconnectAll(dialog.Connections)
+	end
 	if dialog and dialog.Gui then
 		dialog.Gui:Destroy()
 	end
@@ -52,14 +56,19 @@ function Dialog:SetTheme(context)
 	if dialog.Content then
 		dialog.Content.TextColor3 = theme.MutedText
 	end
+	if dialog.Signal then
+		dialog.Signal.BackgroundColor3 = dialog.Danger and theme.Danger or theme.Accent
+	end
 	if dialog.Input then
 		dialog.Input.BackgroundColor3 = theme.Background
 		dialog.Input.TextColor3 = theme.Text
 		dialog.Input.PlaceholderColor3 = theme.MutedText
 	end
 	for _, button in ipairs(dialog.Buttons or {}) do
-		button.BackgroundColor3 = button.Name == "Confirm" and theme.Accent or theme.Background
+		local primaryColor = dialog.Danger and theme.Danger or theme.Accent
+		button.BackgroundColor3 = button.Name == "Confirm" and primaryColor or theme.Background
 		button.TextColor3 = button.Name == "Confirm" and theme.Background or theme.Text
+		context.Utility:ApplyStrokeTheme(button, button.Name == "Confirm" and primaryColor or theme.Stroke)
 	end
 end
 
@@ -76,6 +85,7 @@ function Dialog:Show(context, options)
 		library:_Warn("Dialog", "Unknown dialog type '" .. tostring(dialogType) .. "'; using Info")
 		dialogType = "Info"
 	end
+	local danger = options.Danger == true or options.Variant == "Danger" or options.Style == "Danger"
 	local callbacks = {
 		Confirm = options.OnConfirm or options.ConfirmCallback or options.Callback,
 		Cancel = options.OnCancel or options.CancelCallback,
@@ -88,6 +98,7 @@ function Dialog:Show(context, options)
 		BackgroundTransparency = 0.42,
 		Text = "",
 		AutoButtonColor = false,
+		ZIndex = 100,
 		Parent = library._dialogGui,
 	})
 
@@ -97,6 +108,7 @@ function Dialog:Show(context, options)
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(380, dialogType == "Input" and 218 or 178),
 		BackgroundColor3 = theme.Card,
+		ZIndex = 101,
 		Parent = overlay,
 	})
 	utility:Corner(card, 12)
@@ -113,6 +125,7 @@ function Dialog:Show(context, options)
 		TextSize = 16,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 102,
 		Parent = card,
 	})
 
@@ -128,8 +141,18 @@ function Dialog:Show(context, options)
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
+		ZIndex = 102,
 		Parent = card,
 	})
+	local signal = utility:Create("Frame", {
+		Name = "Signal",
+		Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.fromOffset(danger and 3 or 0, dialogType == "Input" and 186 or 146),
+		BackgroundColor3 = danger and theme.Danger or theme.Accent,
+		ZIndex = 102,
+		Parent = card,
+	})
+	utility:Corner(signal, 2)
 
 	local inputBox
 	if dialogType == "Input" then
@@ -146,6 +169,7 @@ function Dialog:Show(context, options)
 			TextColor3 = theme.Text,
 			TextSize = 13,
 			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 102,
 			Parent = card,
 		})
 		utility:Corner(inputBox, 8)
@@ -159,12 +183,19 @@ function Dialog:Show(context, options)
 		Position = UDim2.new(1, 0, 1, 0),
 		Size = UDim2.new(1, 0, 0, 34),
 		BackgroundTransparency = 1,
+		ZIndex = 102,
 		Parent = card,
 	})
 	utility:List(buttonRow, 8, true)
 
 	local controller = {}
 	local buttons = {}
+	local connections = {}
+	local buttonActions = {}
+	local scale = utility:Create("UIScale", {
+		Scale = 0.97,
+		Parent = card,
+	})
 
 	function controller:Close()
 		Dialog:Close(context, self)
@@ -172,22 +203,24 @@ function Dialog:Show(context, options)
 	end
 
 	local function addButton(name, text, primary, callback)
+		local primaryColor = danger and theme.Danger or theme.Accent
 		local button = utility:Create("TextButton", {
 			Name = name,
 			Size = UDim2.fromOffset(112, 34),
-			BackgroundColor3 = primary and theme.Accent or theme.Background,
+			BackgroundColor3 = primary and primaryColor or theme.Background,
 			Font = Enum.Font.GothamMedium,
 			Text = tostring(text),
 			TextColor3 = primary and theme.Background or theme.Text,
 			TextSize = 13,
 			AutoButtonColor = false,
+			ZIndex = 103,
 			Parent = buttonRow,
 		})
 		utility:Corner(button, 8)
-		utility:Stroke(button, primary and theme.Accent or theme.Stroke, primary and 0.2 or 0.5)
+		utility:Stroke(button, primary and primaryColor or theme.Stroke, primary and 0.2 or 0.5)
 		table.insert(buttons, button)
 
-		button.MouseButton1Click:Connect(function()
+		buttonActions[name] = function()
 			if callback ~= nil then
 				if dialogType == "Input" and name == "Confirm" then
 					library:_InvokeCallback("Dialog", callback, inputBox and inputBox.Text or "")
@@ -196,7 +229,8 @@ function Dialog:Show(context, options)
 				end
 			end
 			controller:Close()
-		end)
+		end
+		utility:Connect(connections, button.MouseButton1Click, buttonActions[name])
 	end
 
 	if dialogType == "Confirm" or dialogType == "Input" then
@@ -211,13 +245,39 @@ function Dialog:Show(context, options)
 		Content = content,
 		Input = inputBox,
 		Buttons = buttons,
+		Danger = danger,
+		Signal = signal,
+		Scale = scale,
+		Connections = connections,
 		Controller = controller,
 	}
 
+	utility:Connect(connections, game:GetService("UserInputService").InputBegan, function(input)
+		if library._activeDialog == nil or input.UserInputType ~= Enum.UserInputType.Keyboard then
+			return
+		end
+
+		if input.KeyCode == Enum.KeyCode.Escape then
+			if buttonActions.Cancel then
+				buttonActions.Cancel()
+			else
+				controller:Close()
+			end
+		elseif input.KeyCode == Enum.KeyCode.Return or input.KeyCode == Enum.KeyCode.KeypadEnter then
+			if buttonActions.Confirm then
+				buttonActions.Confirm()
+			end
+		end
+	end)
+
 	overlay.BackgroundTransparency = 1
 	card.Position = UDim2.fromScale(0.5, 0.48)
-	utility:Tween(overlay, 0.14, { BackgroundTransparency = 0.42 })
-	utility:Tween(card, 0.16, { Position = UDim2.fromScale(0.5, 0.5) })
+	utility:Tween(overlay, utility.Motion.Standard, { BackgroundTransparency = 0.42 })
+	utility:Tween(card, utility.Motion.Reveal, { Position = UDim2.fromScale(0.5, 0.5) }, Enum.EasingStyle.Quart)
+	utility:Tween(scale, utility.Motion.Reveal, { Scale = 1 }, Enum.EasingStyle.Back)
+	if inputBox then
+		inputBox:CaptureFocus()
+	end
 
 	return controller
 end

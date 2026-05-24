@@ -14,6 +14,11 @@ function Dropdown.new(context, section, options)
 		context.Library:_Warn("Dropdown", "Options must be a table; using an empty option list")
 	end
 
+	local searchSetting = options.Searchable
+	if searchSetting == nil then
+		searchSetting = options.Search
+	end
+	local searchThreshold = math.max(tonumber(options.SearchThreshold) or 8, 1)
 	local self = setmetatable({
 		Context = context,
 		Section = section,
@@ -26,9 +31,15 @@ function Dropdown.new(context, section, options)
 		Value = options.Default,
 		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
+		InteractionConnections = {},
 		Expanded = false,
 		Enabled = true,
 		MaxVisibleOptions = math.clamp(tonumber(options.MaxVisibleOptions) or 5, 1, 20),
+		SearchAutomatic = searchSetting == nil,
+		SearchEnabled = searchSetting == true or (searchSetting == nil and #dropdownOptions >= searchThreshold),
+		SearchThreshold = searchThreshold,
+		FilteredOptions = {},
+		SelectedIndex = 1,
 	}, Dropdown)
 
 	if self.Value == nil and self.Options[1] ~= nil then
@@ -41,10 +52,16 @@ function Dropdown.new(context, section, options)
 
 	local theme = self.Theme
 	local utility = self.Utility
+	local compact = section.Compact == true
+	self.BaseHeight = compact and 50 or 58
+	self.ListTop = compact and 56 or 64
+	self.OptionHeight = compact and 24 or 28
+	self.OptionStep = compact and 28 or 32
+	self.SearchHeight = compact and 28 or 32
 
 	local frame = utility:Create("Frame", {
 		Name = self.Name,
-		Size = UDim2.new(1, 0, 0, 58),
+		Size = UDim2.new(1, 0, 0, self.BaseHeight),
 		BackgroundTransparency = 1,
 		Parent = section.Frame,
 	})
@@ -56,15 +73,15 @@ function Dropdown.new(context, section, options)
 		Font = Enum.Font.Gotham,
 		Text = self.Name,
 		TextColor3 = theme.Text,
-		TextSize = 13,
+		TextSize = compact and 12 or 13,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
 	})
 
 	local button = utility:Create("TextButton", {
 		Name = "Button",
-		Position = UDim2.fromOffset(0, 24),
-		Size = UDim2.new(1, 0, 0, 34),
+		Position = UDim2.fromOffset(0, compact and 21 or 24),
+		Size = UDim2.new(1, 0, 0, compact and 29 or 34),
 		BackgroundColor3 = theme.Background,
 		Font = Enum.Font.Gotham,
 		Text = "",
@@ -81,7 +98,7 @@ function Dropdown.new(context, section, options)
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
 		TextColor3 = theme.MutedText,
-		TextSize = 13,
+		TextSize = compact and 12 or 13,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = button,
 	})
@@ -90,7 +107,7 @@ function Dropdown.new(context, section, options)
 		Name = "Arrow",
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -10, 0, 0),
-		Size = UDim2.fromOffset(20, 34),
+		Size = UDim2.fromOffset(20, compact and 29 or 34),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
 		Text = "v",
@@ -101,7 +118,7 @@ function Dropdown.new(context, section, options)
 
 	local list = utility:Create("Frame", {
 		Name = "List",
-		Position = UDim2.fromOffset(0, 64),
+		Position = UDim2.fromOffset(0, self.ListTop),
 		Size = UDim2.new(1, 0, 0, 0),
 		BackgroundColor3 = theme.Background,
 		ClipsDescendants = true,
@@ -111,10 +128,30 @@ function Dropdown.new(context, section, options)
 	utility:Stroke(list, theme.Stroke, 0.5)
 	utility:Padding(list, { All = 4 })
 
+	local searchBox = utility:Create("TextBox", {
+		Name = "Search",
+		Position = UDim2.fromOffset(4, 4),
+		Size = UDim2.new(1, -8, 0, self.SearchHeight),
+		BackgroundColor3 = theme.Card,
+		ClearTextOnFocus = false,
+		Font = Enum.Font.Gotham,
+		PlaceholderText = "Filter options...",
+		PlaceholderColor3 = theme.MutedText,
+		Text = "",
+		TextColor3 = theme.Text,
+		TextSize = compact and 12 or 13,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Visible = self.SearchEnabled,
+		Parent = list,
+	})
+	utility:Corner(searchBox, 6)
+	utility:Stroke(searchBox, theme.Stroke, 0.5)
+	utility:Padding(searchBox, { X = 9 })
+
 	local scroll = utility:Create("ScrollingFrame", {
 		Name = "Options",
-		Size = UDim2.new(1, -8, 1, -8),
-		Position = UDim2.fromOffset(4, 4),
+		Size = UDim2.new(1, -8, 1, self.SearchEnabled and -(self.SearchHeight + 12) or -8),
+		Position = UDim2.fromOffset(4, self.SearchEnabled and (self.SearchHeight + 8) or 4),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		CanvasSize = UDim2.fromOffset(0, 0),
@@ -133,6 +170,7 @@ function Dropdown.new(context, section, options)
 	self.ValueLabel = valueLabel
 	self.Arrow = arrow
 	self.List = list
+	self.SearchBox = searchBox
 	self.Scroll = scroll
 	self.OptionLayout = optionLayout
 	self.CanvasConnection = utility:BindCanvas(scroll, optionLayout, 4)
@@ -141,6 +179,10 @@ function Dropdown.new(context, section, options)
 	for _, option in ipairs(self.Options) do
 		self:_addOption(option)
 	end
+
+	utility:Connect(self.Connections, searchBox:GetPropertyChangedSignal("Text"), function()
+		self:_FilterOptions(searchBox.Text)
+	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
 		if self.Enabled == false then
@@ -158,6 +200,89 @@ function Dropdown.new(context, section, options)
 	return self
 end
 
+function Dropdown:_ResizeExpanded(instant)
+	local maxVisible = math.max(self.MaxVisibleOptions, 1)
+	local optionHeight = math.min(#self.FilteredOptions, maxVisible) * self.OptionStep
+	local searchHeight = self.SearchEnabled and (self.SearchHeight + 8) or 0
+	local height = self.Expanded and optionHeight + searchHeight + 8 or 0
+	local frameHeight = self.Expanded and (self.ListTop + height) or self.BaseHeight
+
+	if instant then
+		self.List.Size = UDim2.new(1, 0, 0, height)
+		self.Instance.Size = UDim2.new(1, 0, 0, frameHeight)
+	else
+		local style = self.Expanded and Enum.EasingStyle.Back or Enum.EasingStyle.Quad
+		self.Utility:Tween(self.List, self.Utility.Motion.Standard, { Size = UDim2.new(1, 0, 0, height) }, style)
+		self.Utility:Tween(self.Instance, self.Utility.Motion.Standard, { Size = UDim2.new(1, 0, 0, frameHeight) }, style)
+	end
+end
+
+function Dropdown:_SetKeyboardSelection(index)
+	if #self.FilteredOptions == 0 then
+		self.SelectedIndex = 0
+	else
+		self.SelectedIndex = math.clamp(index or 1, 1, #self.FilteredOptions)
+	end
+
+	for _, item in ipairs(self.OptionButtons) do
+		local active = item.Value == self.Value
+		local highlighted = self.FilteredOptions[self.SelectedIndex] == item
+		item.Button.BackgroundTransparency = active and 0 or (highlighted and 0.25 or 1)
+		item.Button.TextColor3 = (active or highlighted) and self.Theme.Text or self.Theme.MutedText
+	end
+end
+
+function Dropdown:_FilterOptions(query)
+	if self.Destroyed then
+		return
+	end
+
+	query = string.lower(tostring(query or ""))
+	table.clear(self.FilteredOptions)
+	for _, item in ipairs(self.OptionButtons) do
+		local visible = query == "" or string.find(string.lower(tostring(item.Value)), query, 1, true) ~= nil
+		item.Button.Visible = visible
+		if visible then
+			table.insert(self.FilteredOptions, item)
+		end
+	end
+	self:_SetKeyboardSelection(1)
+	if self.Expanded then
+		self:_ResizeExpanded(true)
+	end
+end
+
+function Dropdown:_EndInteraction()
+	self.Utility:DisconnectAll(self.InteractionConnections)
+end
+
+function Dropdown:_BeginInteraction()
+	self:_EndInteraction()
+	self.Utility:Connect(self.InteractionConnections, game:GetService("UserInputService").InputBegan, function(input)
+		if not self.Expanded or input.UserInputType ~= Enum.UserInputType.Keyboard then
+			return
+		end
+
+		if input.KeyCode == Enum.KeyCode.Escape then
+			self:SetExpanded(false)
+		elseif input.KeyCode == Enum.KeyCode.Down then
+			self:_SetKeyboardSelection(math.min(self.SelectedIndex + 1, #self.FilteredOptions))
+		elseif input.KeyCode == Enum.KeyCode.Up then
+			self:_SetKeyboardSelection(math.max(self.SelectedIndex - 1, 1))
+		elseif input.KeyCode == Enum.KeyCode.Return or input.KeyCode == Enum.KeyCode.KeypadEnter then
+			local item = self.FilteredOptions[self.SelectedIndex]
+			if item then
+				if self.Flag then
+					self.Library:SetFlag(self.Flag, item.Value, true)
+				else
+					self:SetValue(item.Value, true)
+				end
+				self:SetExpanded(false)
+			end
+		end
+	end)
+end
+
 function Dropdown:_addOption(option)
 	local text = tostring(option)
 	local utility = self.Utility
@@ -165,13 +290,13 @@ function Dropdown:_addOption(option)
 
 	local button = utility:Create("TextButton", {
 		Name = text,
-		Size = UDim2.new(1, 0, 0, 28),
+		Size = UDim2.new(1, 0, 0, self.OptionHeight),
 		BackgroundColor3 = theme.Card,
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
 		Text = text,
 		TextColor3 = theme.MutedText,
-		TextSize = 13,
+		TextSize = self.Section.Compact and 12 or 13,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		AutoButtonColor = false,
 		Parent = self.Scroll,
@@ -220,21 +345,38 @@ function Dropdown:SetExpanded(value, instant)
 		return self
 	end
 
-	self.Expanded = value == true
-	local maxVisible = math.max(self.MaxVisibleOptions, 1)
-	local height = self.Expanded and math.min(#self.Options, maxVisible) * 32 + 8 or 0
-	local frameHeight = self.Expanded and (64 + height) or 58
+	local expanded = value == true and self.Enabled ~= false
+	if expanded and self.Library._expandedDropdown and self.Library._expandedDropdown ~= self then
+		self.Library._expandedDropdown:SetExpanded(false, true)
+	end
+	self.Expanded = expanded
+	if self.Expanded then
+		self.Library._expandedDropdown = self
+		self.SearchBox.Text = ""
+		self:_FilterOptions("")
+		self:_BeginInteraction()
+		if self.SearchEnabled then
+			task.defer(function()
+				if self.Expanded and self.SearchBox and self.SearchBox.Parent then
+					self.SearchBox:CaptureFocus()
+				end
+			end)
+		end
+	else
+		if self.Library._expandedDropdown == self then
+			self.Library._expandedDropdown = nil
+		end
+		self:_EndInteraction()
+		if self.SearchBox:IsFocused() then
+			self.SearchBox:ReleaseFocus()
+		end
+		self.SearchBox.Text = ""
+		self:_FilterOptions("")
+	end
 
 	self.Arrow.Text = self.Expanded and "^" or "v"
 	self.Scroll.CanvasPosition = Vector2.new(0, 0)
-
-	if instant then
-		self.List.Size = UDim2.new(1, 0, 0, height)
-		self.Instance.Size = UDim2.new(1, 0, 0, frameHeight)
-	else
-		self.Utility:Tween(self.List, 0.16, { Size = UDim2.new(1, 0, 0, height) })
-		self.Utility:Tween(self.Instance, 0.16, { Size = UDim2.new(1, 0, 0, frameHeight) })
-	end
+	self:_ResizeExpanded(instant)
 	return self
 end
 
@@ -262,6 +404,7 @@ function Dropdown:SetValue(value, fireCallback)
 		item.Button.BackgroundTransparency = active and 0 or 1
 		item.Button.TextColor3 = active and self.Theme.Text or self.Theme.MutedText
 	end
+	self:_SetKeyboardSelection(self.SelectedIndex)
 
 	if changed and fireCallback ~= false then
 		self.Library:_InvokeCallback("Dropdown", self.Callback, self.Value)
@@ -351,10 +494,17 @@ function Dropdown:SetOptions(options, defaultValue)
 
 	table.clear(self.OptionButtons)
 	self.Options = options
+	if self.SearchAutomatic then
+		self.SearchEnabled = #options >= self.SearchThreshold
+	end
+	self.SearchBox.Visible = self.SearchEnabled
+	self.Scroll.Position = UDim2.fromOffset(4, self.SearchEnabled and (self.SearchHeight + 8) or 4)
+	self.Scroll.Size = UDim2.new(1, -8, 1, self.SearchEnabled and -(self.SearchHeight + 12) or -8)
 
 	for _, option in ipairs(self.Options) do
 		self:_addOption(option)
 	end
+	self:_FilterOptions("")
 
 	local nextValue = defaultValue
 	if nextValue == nil or not table.find(self.Options, nextValue) then
@@ -385,6 +535,9 @@ function Dropdown:SetTheme(theme)
 	self.ValueLabel.TextColor3 = theme.MutedText
 	self.Arrow.TextColor3 = theme.Accent
 	self.List.BackgroundColor3 = theme.Background
+	self.SearchBox.BackgroundColor3 = theme.Card
+	self.SearchBox.TextColor3 = theme.Text
+	self.SearchBox.PlaceholderColor3 = theme.MutedText
 	self.Scroll.ScrollBarImageColor3 = theme.Accent
 
 	for _, item in ipairs(self.OptionButtons) do
@@ -405,6 +558,10 @@ function Dropdown:Destroy()
 	self.Destroyed = true
 	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
+	self:_EndInteraction()
+	if self.Library._expandedDropdown == self then
+		self.Library._expandedDropdown = nil
+	end
 
 	if self.CanvasConnection then
 		self.CanvasConnection:Disconnect()

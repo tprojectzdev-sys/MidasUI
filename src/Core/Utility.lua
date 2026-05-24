@@ -3,6 +3,14 @@ local UserInputService = game:GetService("UserInputService")
 
 local Utility = {}
 
+Utility.Motion = {
+	Fast = 0.11,
+	Standard = 0.17,
+	Reveal = 0.28,
+	Exit = 0.2,
+	IntroDrop = 0.34,
+}
+
 Utility.IconGlyphs = {
 	crown = "C",
 	home = "H",
@@ -84,6 +92,32 @@ function Utility:Tween(instance, duration, properties, style, direction)
 	return tween
 end
 
+function Utility:TweenTracked(store, key, instance, duration, properties, style, direction)
+	store = store or {}
+	local existing = store[key]
+	if existing then
+		existing:Cancel()
+	end
+
+	local tween = self:Tween(instance, duration, properties, style, direction)
+	store[key] = tween
+	tween.Completed:Connect(function()
+		if store[key] == tween then
+			store[key] = nil
+		end
+	end)
+	return tween
+end
+
+function Utility:CancelTweens(store)
+	for key, tween in pairs(store or {}) do
+		if tween then
+			tween:Cancel()
+		end
+		store[key] = nil
+	end
+end
+
 function Utility:IconText(icon)
 	if typeof(icon) == "number" then
 		return ""
@@ -95,6 +129,58 @@ function Utility:IconText(icon)
 	end
 
 	return ""
+end
+
+function Utility:CreateCrownMark(parent, theme, size)
+	size = size or 30
+	local root = self:Create("Frame", {
+		Name = "CrownMark",
+		Size = UDim2.fromOffset(size, size),
+		BackgroundColor3 = theme.AccentSoft,
+		BackgroundTransparency = 0.18,
+		Parent = parent,
+	})
+	self:Corner(root, math.floor(size * 0.25))
+	self:Stroke(root, theme.Stroke, 0.12, 1)
+
+	local scale = size / 30
+	local function piece(name, position, pieceSize, rotation, color)
+		local item = self:Create("Frame", {
+			Name = name,
+			Position = UDim2.fromOffset(position[1] * scale, position[2] * scale),
+			Size = UDim2.fromOffset(pieceSize[1] * scale, pieceSize[2] * scale),
+			Rotation = rotation or 0,
+			BackgroundColor3 = color,
+			BorderSizePixel = 0,
+			Parent = root,
+		})
+		self:Corner(item, math.max(1, math.floor(scale)))
+		return item
+	end
+
+	piece("Accent", { 6, 19 }, { 18, 4 }, 0, theme.Accent)
+	piece("Accent", { 7, 12 }, { 3, 10 }, -25, theme.Accent)
+	piece("Accent", { 20, 12 }, { 3, 10 }, 25, theme.Accent)
+	piece("Highlight", { 13, 7 }, { 4, 15 }, 0, theme.Highlight)
+	piece("Accent", { 11, 17 }, { 8, 7 }, 0, theme.Accent)
+	piece("Highlight", { 14, 20 }, { 2, 2 }, 0, theme.Highlight)
+	return root
+end
+
+function Utility:ApplyCrownTheme(mark, theme)
+	if not mark then
+		return
+	end
+
+	mark.BackgroundColor3 = theme.AccentSoft
+	self:ApplyStrokeTheme(mark, theme.Stroke)
+	for _, item in ipairs(mark:GetChildren()) do
+		if item:IsA("Frame") and item.Name == "Accent" then
+			item.BackgroundColor3 = theme.Accent
+		elseif item:IsA("Frame") and item.Name == "Highlight" then
+			item.BackgroundColor3 = theme.Highlight
+		end
+	end
 end
 
 function Utility:Connect(store, signal, callback)

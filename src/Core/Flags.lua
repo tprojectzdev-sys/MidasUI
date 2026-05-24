@@ -77,7 +77,7 @@ function Flags:Get(library, flag)
 	return library.Flags[flag]
 end
 
-function Flags:Set(library, flag, value, fireCallback)
+function Flags:Set(library, flag, value, fireCallback, instant)
 	local controllers = library._flagObjects[flag]
 	local shouldFire = fireCallback ~= false
 	local primary
@@ -95,14 +95,14 @@ function Flags:Set(library, flag, value, fireCallback)
 		else
 			primary = controllers[1]
 			if primary.SetValue then
-				primary:SetValue(value, shouldFire)
+				primary:SetValue(value, shouldFire, instant)
 				value = primary.GetValue and primary:GetValue() or value
 			end
 
 			for index = 2, #controllers do
 				local controller = controllers[index]
 				if controller.SetValue then
-					controller:SetValue(value, shouldFire)
+					controller:SetValue(value, shouldFire, instant)
 				end
 			end
 		end

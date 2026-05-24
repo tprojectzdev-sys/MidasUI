@@ -1,4 +1,11 @@
-local MidasUI = loadstring(game:HttpGet("URL_HERE"))()
+local MidasUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/tprojectzdev-sys/MidasUI/refs/heads/master/dist/MidasUI.lua"))()
+
+print("MidasUI:", MidasUI)
+print("Version:", MidasUI.Version)
+print("CreateWindow:", MidasUI.CreateWindow)
+print("RegisterCommand:", MidasUI.RegisterCommand)
+print("OpenCommandPalette:", MidasUI.OpenCommandPalette)
+print("Search:", MidasUI.Search)
 
 MidasUI:SetDebug(true)
 
@@ -12,20 +19,230 @@ MidasUI:RegisterTheme("ObsidianGold", {
 	MutedText = Color3.fromRGB(156, 149, 135),
 	Stroke = Color3.fromRGB(80, 66, 38),
 	Danger = Color3.fromRGB(230, 88, 88),
+	Success = Color3.fromRGB(80, 190, 124),
 })
 MidasUI:RegisterTheme("PartialGold", {
 	Accent = Color3.fromRGB(244, 205, 112),
 })
 
 local Window = MidasUI:CreateWindow({
-	Title = "MidasUI V1.5 Manual QA Showcase",
-	Subtitle = "API stability, configs, transient UI, themes, diagnostics",
+	Title = "MidasUI V1.8 Command Showcase",
+	Subtitle = "Searchable actions, navigation, dashboard workflow, and dense panel tests",
 	Icon = "crown",
 	Theme = "DarkGold",
 	Size = UDim2.fromOffset(740, 550),
+	Intro = true,
 	SaveConfig = true,
 	ConfigFolder = "MidasShowcase",
 })
+
+local DashboardWindow
+local PowerWindow
+
+local function openDashboard()
+	if DashboardWindow and not DashboardWindow.Closed then
+		DashboardWindow:Show()
+		return
+	end
+
+	DashboardWindow = MidasUI:CreateWindow({
+		Title = "Workflow Dashboard",
+		Subtitle = "FarmingDashboard template - generic UI status sample",
+		Template = "FarmingDashboard",
+		Theme = MidasUI.ThemeName,
+		Intro = false,
+	})
+	local DashboardTab = DashboardWindow:CreateTab({ Name = "Status", Icon = "home" })
+	local Summary = DashboardTab:CreateSection("Current Activity")
+	local CurrentTask = Summary:CreateStatusCard({ Name = "Current Task", Value = "Idle", Icon = "info" })
+	local RuntimeCard = Summary:CreateStatCard({ Name = "Runtime", Value = "00:00:00" })
+	local Progress = Summary:CreateProgressBar({
+		Name = "Cycle Progress",
+		Flag = "dashboard_progress",
+		Default = 18,
+		Status = "Preparing",
+	})
+	local Notice = Summary:CreateCallout({
+		Title = "Workflow Note",
+		Content = "This dashboard displays status only; application logic remains external.",
+		Type = "Info",
+	})
+	local ActivityLog
+	Summary:CreateActionRow({
+		Actions = {
+			{
+				Name = "Start",
+				Style = "Success",
+				Callback = function()
+					CurrentTask:Set("Running")
+					RuntimeCard:Set("00:00:12")
+					Progress:SetStatus("Running"):Set(42)
+					Notice:SetType("Success"):SetContent("Workflow running. Progress and status are controller-driven.")
+					ActivityLog:AddLine("Workflow started", "Success")
+				end,
+			},
+			{
+				Name = "Pause",
+				Style = "Primary",
+				Callback = function()
+					CurrentTask:Set("Paused")
+					Progress:SetStatus("Paused")
+					ActivityLog:AddLine("Workflow paused", "Warning")
+				end,
+			},
+			{
+				Name = "Stop",
+				Style = "Danger",
+				Callback = function()
+					MidasUI:Confirm({
+						Title = "Stop Workflow",
+						Content = "Stop this sample workflow and reset progress?",
+						Danger = true,
+						ConfirmText = "Stop",
+						CancelText = "Keep Running",
+						OnConfirm = function()
+							CurrentTask:Set("Idle")
+							Progress:SetStatus("Stopped"):Set(0)
+							ActivityLog:AddLine("Workflow stopped", "Error")
+						end,
+					})
+				end,
+			},
+		},
+	})
+	local Activity = DashboardTab:CreateSection("Recent Events")
+	ActivityLog = Activity:CreateLogPanel({
+		MaxLines = 8,
+		Lines = {
+			{ Text = "Dashboard initialized", Type = "Info" },
+			{ Text = "Awaiting user action", Type = "Warning" },
+		},
+	})
+	Activity:CreateButton({
+		Name = "Controller Update Test",
+		Callback = function()
+			MidasUI:SetFlag("dashboard_progress", 76)
+			RuntimeCard:Set("00:13:42")
+			Notice:SetType("Warning"):SetContent("Check recent events before completing the workflow.")
+			ActivityLog:Log("SetFlag moved progress to 76%", "Info")
+		end,
+	})
+
+	DashboardWindow:RegisterCommand({
+		Id = "dashboard_start",
+		Title = "Dashboard: Start Demo Workflow",
+		Description = "Start the generic dashboard status sample.",
+		Category = "Dashboard",
+		Keywords = { "workflow", "progress", "run" },
+		Callback = function()
+			CurrentTask:Set("Running")
+			Progress:SetStatus("Running"):Set(42)
+			ActivityLog:AddLine("Started from command palette", "Success")
+		end,
+	})
+	DashboardWindow:RegisterCommand({
+		Id = "dashboard_pause",
+		Title = "Dashboard: Pause Demo Workflow",
+		Description = "Pause the generic dashboard status sample.",
+		Category = "Dashboard",
+		Callback = function()
+			CurrentTask:Set("Paused")
+			Progress:SetStatus("Paused")
+			ActivityLog:AddLine("Paused from command palette", "Warning")
+		end,
+	})
+	DashboardWindow:RegisterCommand({
+		Id = "dashboard_clear_log",
+		Title = "Dashboard: Clear Recent Events",
+		Description = "Clear the demo log panel.",
+		Category = "Dashboard",
+		Keywords = { "log", "reset" },
+		Callback = function()
+			ActivityLog:Clear():AddLine("Log cleared from command palette", "Info")
+		end,
+	})
+	DashboardWindow:RegisterCommand({
+		Id = "dashboard_status",
+		Title = "Dashboard: Jump To Status",
+		Description = "Reveal the Current Activity section.",
+		Category = "Navigate",
+		Callback = function()
+			MidasUI:NavigateTo(Summary)
+		end,
+	})
+	DashboardWindow:RegisterCommand({
+		Id = "dashboard_reset",
+		Title = "Dashboard: Reset Progress",
+		Description = "Reset the display-only progress sample.",
+		Category = "Dashboard",
+		Callback = function()
+			CurrentTask:Set("Idle")
+			Progress:SetStatus("Ready"):Set(0)
+			ActivityLog:AddLine("Progress reset", "Info")
+		end,
+	})
+end
+
+local function openPowerPanel()
+	if PowerWindow and not PowerWindow.Closed then
+		PowerWindow:Show()
+		return
+	end
+
+	PowerWindow = MidasUI:CreateWindow({
+		Title = "Advanced Configuration",
+		Subtitle = "PowerPanel template - compact generic settings",
+		Template = "PowerPanel",
+		Theme = MidasUI.ThemeName,
+		Intro = false,
+	})
+	local ControlsTab = PowerWindow:CreateTab({ Name = "Controls", Icon = "settings" })
+	local Behavior = ControlsTab:CreateSection({ Name = "Feature Controls", Compact = true })
+	local Processing = Behavior:CreateToggle({ Name = "Enable Processing", Flag = "power_enabled", Default = true })
+	Behavior:CreateSlider({ Name = "Update Rate", Flag = "power_rate", Min = 0.1, Max = 3, Increment = 0.05, Default = 1 })
+	local ExecutionMode = Behavior:CreateDropdown({
+		Name = "Execution Mode",
+		Flag = "power_mode",
+		Options = { "Balanced", "Responsive", "Efficient", "Low Latency", "Scheduled", "Validated", "Batch", "Interactive" },
+		Default = "Balanced",
+		Searchable = true,
+	})
+	Behavior:CreateKeybind({ Name = "Panel Toggle", Flag = "power_bind", Default = Enum.KeyCode.P, Mode = "Toggle" })
+	local Advanced = ControlsTab:CreateSection({ Name = "Grouped Settings", Compact = true })
+	Advanced:CreateCallout({ Title = "Dense Layout", Content = "Compact spacing keeps larger settings sets readable.", Type = "Info" })
+	for index = 1, 7 do
+		Advanced:CreateToggle({ Name = "Optional Setting " .. index, Flag = "power_optional_" .. index, Default = index % 2 == 0 })
+	end
+	Advanced:CreateProgressBar({ Name = "Configuration Coverage", Value = 68, Status = "7 groups" })
+	PowerWindow:RegisterCommand({
+		Id = "power_advanced",
+		Title = "Power Panel: Jump To Grouped Settings",
+		Description = "Navigate to the compact advanced group.",
+		Category = "Navigate",
+		Callback = function()
+			MidasUI:NavigateTo(Advanced)
+		end,
+	})
+	PowerWindow:RegisterCommand({
+		Id = "power_processing",
+		Title = "Power Panel: Toggle Processing",
+		Description = "Explicitly toggle the sample advanced flag.",
+		Category = "Power Panel",
+		Callback = function()
+			Processing:Set(not Processing:GetValue())
+		end,
+	})
+	PowerWindow:RegisterCommand({
+		Id = "power_mode",
+		Title = "Power Panel: Search Execution Mode",
+		Description = "Navigate to and expand the searchable option list.",
+		Category = "Power Panel",
+		Keywords = { "dropdown", "filter", "compact" },
+		Callback = function()
+			MidasUI:NavigateTo(ExecutionMode)
+		end,
+	})
+end
 
 local Main = Window:CreateTab({ Name = "Main", Icon = "home" })
 local Controllers = Main:CreateSection("Controller API")
@@ -53,6 +270,16 @@ local ControlledSlider = Controllers:CreateSlider({
 	Tooltip = "Updated through SetFlag and the controller API.",
 })
 
+local PrecisionSlider = Controllers:CreateSlider({
+	Name = "Precision Slider (0.01)",
+	Flag = "precision_slider",
+	Min = -1,
+	Max = 1,
+	Default = 0.25,
+	Increment = 0.01,
+	Tooltip = "Drag slowly and verify clean two-decimal display and smooth motion.",
+})
+
 local DynamicDropdown = Controllers:CreateDropdown({
 	Name = "Dynamic Dropdown",
 	Flag = "dynamic_dropdown",
@@ -67,6 +294,7 @@ Controllers:CreateButton({
 	Callback = function()
 		Status:SetText("Controller status: updated through public methods.")
 		ControlledSlider:Set(75)
+		PrecisionSlider:Set(0.37)
 		DynamicDropdown:SetOptions({ "One", "Two", "Three", "Four", "Five", "Six" }, "Three")
 		MasterToggle:Set(true)
 	end,
@@ -77,9 +305,11 @@ Controllers:CreateButton({
 	Callback = function()
 		MasterToggle:Disable()
 		ControlledSlider:Disable()
+		PrecisionSlider:Disable()
 		task.delay(1, function()
 			MasterToggle:Enable():Refresh()
 			ControlledSlider:Enable():Refresh()
+			PrecisionSlider:Enable():Refresh()
 		end)
 	end,
 })
@@ -138,11 +368,108 @@ Runtime:CreateButton({
 	end,
 })
 
+local Presets = Main:CreateSection("V1.8 Searchable Workflow Templates")
+Presets:CreateParagraph({
+	Text = "Open the optional dashboard or compact panel presets, then use Ctrl+K to find their scoped actions.",
+})
+
+local DiscoveryTab = Window:CreateTab({ Name = "Discovery", Icon = "search" })
+local Discovery = DiscoveryTab:CreateSection("Command Palette and Search")
+
+Discovery:CreateParagraph({
+	Text = "Press Ctrl+K, type a command or control name, use Up/Down, and press Enter. Escape closes the active overlay.",
+})
+Discovery:CreateButton({
+	Name = "Open Command Palette",
+	Callback = function()
+		MidasUI:OpenCommandPalette()
+	end,
+})
+Discovery:CreateButton({
+	Name = "Open Palette Searching Slider",
+	Callback = function()
+		MidasUI:OpenCommandPalette({ Query = "precision slider" })
+	end,
+})
+Discovery:CreateButton({
+	Name = "Toggle Command Palette",
+	Callback = function()
+		MidasUI:ToggleCommandPalette()
+	end,
+})
+Discovery:CreateButton({
+	Name = "Print Search: Dropdown",
+	Callback = function()
+		for _, result in ipairs(MidasUI:Search("dropdown")) do
+			print("Search result:", result.Type, result.Title, result.Category)
+		end
+	end,
+})
+Discovery:CreateButton({
+	Name = "Print Command Search: Theme",
+	Callback = function()
+		for _, result in ipairs(MidasUI:SearchCommands("theme")) do
+			print("Command result:", result.Title)
+		end
+	end,
+})
+local RemovableCommand
+Discovery:CreateButton({
+	Name = "Register Temporary Command",
+	Callback = function()
+		if RemovableCommand then
+			RemovableCommand:Unregister()
+		end
+		RemovableCommand = MidasUI:RegisterCommand({
+			Title = "Temporary: Notify Once",
+			Description = "Removable command registry test.",
+			Category = "QA",
+			Owner = Discovery,
+			Callback = function()
+				MidasUI:Notify({ Title = "Command", Content = "Temporary action executed.", Duration = 2 })
+			end,
+		})
+	end,
+})
+Discovery:CreateButton({
+	Name = "Unregister Temporary Command",
+	Callback = function()
+		if RemovableCommand then
+			RemovableCommand:Unregister()
+			RemovableCommand = nil
+		end
+	end,
+})
+Discovery:CreateButton({
+	Name = "Invalid Command Warning",
+	Callback = function()
+		MidasUI:RegisterCommand({ Title = "Missing Callback" })
+	end,
+})
+Presets:CreateButton({
+	Name = "Open Farming Dashboard Demo",
+	Tooltip = "Shows StatCard, ProgressBar, LogPanel, Callout, and ActionRow.",
+	Callback = openDashboard,
+})
+Presets:CreateButton({
+	Name = "Open Advanced Power Panel Demo",
+	Tooltip = "Shows opt-in compact spacing for a dense generic configuration page.",
+	Callback = openPowerPanel,
+})
+
+Runtime:CreateButton({
+	Name = "SetFlag: Precision To -0.37",
+	Callback = function()
+		MidasUI:SetFlag("precision_slider", -0.37)
+	end,
+})
+
 Runtime:CreateButton({
 	Name = "Bad Values Stay Safe",
 	Tooltip = "Debug mode reports rejected values without damaging controller state.",
 	Callback = function()
 		MidasUI:SetFlag("controlled_slider", "not a number")
+		MidasUI:SetFlag("precision_slider", "not a number")
 		MidasUI:SetFlag("dynamic_dropdown", "Missing option")
 		MidasUI:SetFlag("master_dependency", "not a boolean")
 	end,
@@ -165,14 +492,32 @@ Runtime:CreateButton({
 local DialogTab = Window:CreateTab({ Name = "Dialogs", Icon = "info" })
 local Dialogs = DialogTab:CreateSection("Dialogs and Window Methods")
 
+Dialogs:CreateParagraph({
+	Text = "Dialogs should remain in front after minimize/restore and animated hide/show tests.",
+})
+
 Dialogs:CreateButton({
 	Name = "Info Dialog",
 	Callback = function()
 		Window:Dialog({
 			Type = "Info",
 			Title = "Information",
-			Content = "This is a themed V1.5 dialog.",
+			Content = "This V1.8 dialog must render above the restored window.",
 		})
+	end,
+})
+
+Dialogs:CreateButton({
+	Name = "Palette Then Dialog Layer Test",
+	Tooltip = "The dialog takes modal priority and closes the command palette.",
+	Callback = function()
+		MidasUI:OpenCommandPalette({ Query = "dialog" })
+		task.delay(0.5, function()
+			MidasUI:Confirm({
+				Title = "Modal Priority",
+				Content = "The palette should be gone and this dialog should be above the window.",
+			})
+		end)
 	end,
 })
 
@@ -199,7 +544,7 @@ Dialogs:CreateButton({
 			Title = "Rename Window",
 			Content = "Enter a new window title.",
 			Placeholder = "Window title",
-			Default = "MidasUI V1.5",
+			Default = "MidasUI V1.8",
 			OnConfirm = function(text)
 				Window:SetTitle(text)
 			end,
@@ -208,7 +553,7 @@ Dialogs:CreateButton({
 })
 
 Dialogs:CreateButton({
-	Name = "Hide Window For One Second",
+	Name = "Animated Hide / Show",
 	Callback = function()
 		Window:Hide()
 		task.delay(1, function()
@@ -218,17 +563,65 @@ Dialogs:CreateButton({
 })
 
 Dialogs:CreateButton({
-	Name = "Minimize / Restore",
+	Name = "Minimize / Restore Regression",
 	Callback = function()
 		Window:Minimize()
-		task.delay(1, function()
+		task.delay(0.8, function()
 			Window:Restore()
 		end)
 	end,
 })
 
+Dialogs:CreateButton({
+	Name = "Palette Minimize / Restore Cleanup",
+	Callback = function()
+		MidasUI:OpenCommandPalette({ Query = "navigate" })
+		task.delay(0.4, function()
+			Window:Minimize()
+			task.delay(0.6, function()
+				Window:Restore()
+			end)
+		end)
+	end,
+})
+
+Dialogs:CreateButton({
+	Name = "Palette Hide / Show Cleanup",
+	Callback = function()
+		MidasUI:OpenCommandPalette({ Query = "theme" })
+		task.delay(0.4, function()
+			Window:Hide()
+			task.delay(0.6, function()
+				Window:Show()
+			end)
+		end)
+	end,
+})
+
+Dialogs:CreateButton({
+	Name = "Restore Then Confirm Layer Test",
+	Tooltip = "Minimizes, restores, then opens a confirm dialog above the full window.",
+	Callback = function()
+		Window:Minimize()
+		task.delay(0.55, function()
+			Window:Restore()
+			task.delay(0.4, function()
+				MidasUI:Confirm({
+					Title = "Layering Check",
+					Content = "This overlay should be fully above the restored window.",
+				})
+			end)
+		end)
+	end,
+})
+
 local Settings = Window:CreateTab({ Name = "Settings", Icon = "settings" })
-local Themes = Settings:CreateSection("Themes")
+local Themes = Settings:CreateSection("Theme Richness and Crown Branding")
+
+Themes:CreateParagraph({
+	Text = "Compare the stronger built-in surfaces and the compact crown crest in the topbar.",
+	Tooltip = "The crown mark is code-native and follows the active accent colors.",
+})
 
 Themes:CreateDropdown({
 	Name = "Runtime Theme",
@@ -245,6 +638,14 @@ Themes:CreateButton({
 	Tooltip = "Only logs when debug mode is enabled.",
 	Callback = function()
 		MidasUI:SetTheme("MissingTheme")
+	end,
+})
+
+Themes:CreateButton({
+	Name = "Theme Switch With Palette Open",
+	Callback = function()
+		MidasUI:OpenCommandPalette({ Query = "theme" })
+		MidasUI:SetTheme(MidasUI.ThemeName == "Midnight" and "DarkGold" or "Midnight")
 	end,
 })
 
@@ -291,13 +692,13 @@ Profiles:CreateButton({
 	Callback = function()
 		local state = MidasUI:GetDebugState()
 		if state then
-			print("MidasUI Debug:", state.Version, state.Theme, state.WindowCount, state.FlagCount, state.KeybindCount)
+			print("MidasUI Debug:", state.Version, state.Theme, state.WindowCount, state.FlagCount, state.KeybindCount, state.CommandCount, state.SearchItemCount, state.HasOpenCommandPalette)
 		end
 	end,
 })
 
 Profiles:CreateButton({
-	Name = "Notification Cleanup Test",
+	Name = "Animated Notification Exit",
 	Callback = function()
 		local notification = MidasUI:Notify({
 			Title = "Controller",
@@ -307,6 +708,21 @@ Profiles:CreateButton({
 		task.delay(1, function()
 			notification:Close()
 		end)
+	end,
+})
+
+Profiles:CreateButton({
+	Name = "Notification Stack Motion Test",
+	Callback = function()
+		for index = 1, 3 do
+			task.delay((index - 1) * 0.12, function()
+				MidasUI:Notify({
+					Title = "Motion " .. index,
+					Content = "Slide-in, settle, and clean exit.",
+					Duration = 2 + index,
+				})
+			end)
+		end
 	end,
 })
 
@@ -324,6 +740,7 @@ Stress:CreateDropdown({
 	Options = longOptions,
 	Default = "Alpha",
 	MaxVisibleOptions = 6,
+	Searchable = true,
 })
 
 for index = 1, 10 do
@@ -346,6 +763,10 @@ Keybinds:CreateInput({
 	Placeholder = "Type here; keybinds should not fire while focused.",
 })
 
+Keybinds:CreateParagraph({
+	Text = "While this input is focused, Ctrl+K and existing keybinds should not interrupt ordinary typing.",
+})
+
 Keybinds:CreateKeybind({
 	Name = "Toggle Key",
 	Flag = "toggle_key",
@@ -354,6 +775,100 @@ Keybinds:CreateKeybind({
 	Callback = function(keyCode)
 		print("Toggle key fired:", keyCode)
 	end,
+})
+
+Window:RegisterCommand({
+	Id = "navigate_main",
+	Title = "Navigate: Main Tab",
+	Description = "Jump to controllers and workflow launchers.",
+	Category = "Navigate",
+	Keywords = { "home", "controllers" },
+	Callback = function()
+		MidasUI:NavigateTo(Main)
+	end,
+})
+Window:RegisterCommand({
+	Id = "navigate_discovery",
+	Title = "Navigate: Discovery Tab",
+	Description = "Jump to V1.8 command and search tests.",
+	Category = "Navigate",
+	Keywords = { "palette", "search" },
+	Callback = function()
+		MidasUI:NavigateTo(DiscoveryTab)
+	end,
+})
+Window:RegisterCommand({
+	Id = "navigate_dialogs",
+	Title = "Navigate: Dialog Tests",
+	Description = "Jump to overlay layering regression tests.",
+	Category = "Navigate",
+	Callback = function()
+		MidasUI:NavigateTo(Dialogs)
+	end,
+})
+Window:RegisterCommand({
+	Id = "theme_midnight",
+	Title = "Theme: Apply Midnight",
+	Description = "Switch the runtime theme through a command.",
+	Category = "Theme",
+	Callback = function()
+		MidasUI:SetTheme("Midnight")
+	end,
+})
+Window:RegisterCommand({
+	Id = "theme_gold",
+	Title = "Theme: Apply DarkGold",
+	Description = "Restore the gold runtime theme through a command.",
+	Category = "Theme",
+	Callback = function()
+		MidasUI:SetTheme("DarkGold")
+	end,
+})
+Window:RegisterCommand({
+	Id = "palette_keep_open",
+	Title = "Palette: Keep Open Notification",
+	Description = "Show a notice while leaving results available.",
+	Category = "QA",
+	CloseOnRun = false,
+	Callback = function()
+		MidasUI:Notify({ Title = "Palette", Content = "This command leaves the palette open.", Duration = 2 })
+	end,
+})
+Window:RegisterCommand({
+	Id = "profile_save",
+	Title = "Profile: Save Current",
+	Description = "Save the named demonstration profile.",
+	Category = "Profiles",
+	Callback = function()
+		local profile = MidasUI:GetFlag("profile_name") or "default"
+		MidasUI:SaveConfig(profile)
+	end,
+})
+Window:RegisterCommand({
+	Id = "profile_load",
+	Title = "Profile: Load Current",
+	Description = "Load the named demonstration profile.",
+	Category = "Profiles",
+	Callback = function()
+		local profile = MidasUI:GetFlag("profile_name") or "default"
+		MidasUI:LoadConfig(profile)
+	end,
+})
+Window:RegisterCommand({
+	Id = "open_dashboard",
+	Title = "Open: Farming Dashboard Demo",
+	Description = "Open the generic dashboard workflow window.",
+	Category = "Templates",
+	Keywords = { "status", "progress", "log" },
+	Callback = openDashboard,
+})
+Window:RegisterCommand({
+	Id = "open_power_panel",
+	Title = "Open: Advanced Power Panel Demo",
+	Description = "Open the compact settings window.",
+	Category = "Templates",
+	Keywords = { "dense", "advanced", "dropdown" },
+	Callback = openPowerPanel,
 })
 
 Keybinds:CreateKeybind({
@@ -366,8 +881,10 @@ Keybinds:CreateKeybind({
 	end,
 })
 
-MidasUI:Notify({
-	Title = "MidasUI",
-	Content = "V1.5 showcase loaded. Use the sections as a manual QA suite.",
-	Duration = 4,
-})
+task.delay(0.75, function()
+	MidasUI:Notify({
+		Title = "MidasUI V1.8",
+		Content = "Press Ctrl+K to discover commands, controls, and workflow windows.",
+		Duration = 4,
+	})
+end)

@@ -15,13 +15,13 @@ function Paragraph.new(context, section, options)
 
 	local label = self.Utility:Create("TextLabel", {
 		Name = "Paragraph",
-		Size = UDim2.new(1, 0, 0, options.Height or 28),
+		Size = UDim2.new(1, 0, 0, options.Height or (section.Compact and 24 or 28)),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
 		Text = text,
 		TextColor3 = self.Theme.MutedText,
-		TextSize = options.TextSize or 13,
+		TextSize = options.TextSize or (section.Compact and 12 or 13),
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,

@@ -8,12 +8,15 @@ $modules = @(
 	"Assets/Icons",
 	"Core/Utility",
 	"Core/Theme",
+	"Core/Templates",
 	"Core/Flags",
 	"Core/Config",
 	"Core/Notify",
 	"Core/Tooltip",
 	"Core/Keybinds",
 	"Core/Dialog",
+	"Core/Commands",
+	"Core/CommandPalette",
 	"Core/Window",
 	"Core/Tab",
 	"Core/Section",
@@ -24,11 +27,16 @@ $modules = @(
 	"Elements/Input",
 	"Elements/Keybind",
 	"Elements/Paragraph",
-	"Elements/Divider"
+	"Elements/Divider",
+	"Elements/ProgressBar",
+	"Elements/StatCard",
+	"Elements/LogPanel",
+	"Elements/Callout",
+	"Elements/ActionRow"
 )
 
 $builder = [System.Text.StringBuilder]::new()
-[void]$builder.AppendLine("-- MidasUI V1.5 single-file bundle")
+[void]$builder.AppendLine("-- MidasUI V1.8 single-file bundle")
 [void]$builder.AppendLine("-- Generated from src modules by tools/build-dist.ps1. Edit src/ first.")
 [void]$builder.AppendLine("local ModuleCache = {}")
 [void]$builder.AppendLine("local ModuleSources = {}")
@@ -68,6 +76,9 @@ local Notify = requireModule("Core/Notify")
 local Tooltip = requireModule("Core/Tooltip")
 local Keybinds = requireModule("Core/Keybinds")
 local Dialog = requireModule("Core/Dialog")
+local Templates = requireModule("Core/Templates")
+local Commands = requireModule("Core/Commands")
+local CommandPalette = requireModule("Core/CommandPalette")
 local Icons = requireModule("Assets/Icons")
 '@
 $init = [regex]::Replace(
@@ -78,7 +89,7 @@ $init = [regex]::Replace(
 $init = $init.Replace('require(core:WaitForChild("Window"))', 'requireModule("Core/Window")')
 $init = $init.Replace('require(core:WaitForChild("Tab"))', 'requireModule("Core/Tab")')
 $init = $init.Replace('require(core:WaitForChild("Section"))', 'requireModule("Core/Section")')
-foreach ($element in @("Button", "Toggle", "Slider", "Dropdown", "Input", "Keybind", "Paragraph", "Divider")) {
+foreach ($element in @("Button", "Toggle", "Slider", "Dropdown", "Input", "Keybind", "Paragraph", "Divider", "ProgressBar", "StatCard", "LogPanel", "Callout", "ActionRow")) {
 	$init = $init.Replace(
 		('require(elementsFolder:WaitForChild("{0}"))' -f $element),
 		('requireModule("Elements/{0}")' -f $element)

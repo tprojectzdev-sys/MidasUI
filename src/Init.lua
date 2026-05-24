@@ -11,6 +11,9 @@ local Notify = require(core:WaitForChild("Notify"))
 local Tooltip = require(core:WaitForChild("Tooltip"))
 local Keybinds = require(core:WaitForChild("Keybinds"))
 local Dialog = require(core:WaitForChild("Dialog"))
+local Templates = require(core:WaitForChild("Templates"))
+local Commands = require(core:WaitForChild("Commands"))
+local CommandPalette = require(core:WaitForChild("CommandPalette"))
 local Icons = assetsFolder and require(assetsFolder:WaitForChild("Icons")) or nil
 
 if Icons and Icons.Map then
@@ -18,10 +21,11 @@ if Icons and Icons.Map then
 end
 
 local MidasUI = {
-	Version = "1.5.0",
+	Version = "1.8.0",
 	Flags = {},
 	Keybinds = {},
 	Themes = Theme.Registry,
+	Templates = Templates.Registry,
 	ThemeName = "DarkGold",
 	Theme = Theme:Normalize(Theme.Registry.DarkGold),
 	_windows = {},
@@ -33,6 +37,7 @@ local MidasUI = {
 	_configFolder = "Midas",
 	_configFile = "config.json",
 	_windowSettings = {},
+	CommandPaletteKeyCode = Enum.KeyCode.K,
 }
 
 local Context = {
@@ -45,6 +50,9 @@ local Context = {
 	Tooltip = Tooltip,
 	Keybinds = Keybinds,
 	Dialog = Dialog,
+	Templates = Templates,
+	Commands = Commands,
+	CommandPalette = CommandPalette,
 	Elements = {},
 }
 
@@ -62,6 +70,11 @@ Context.Elements.Input = require(elementsFolder:WaitForChild("Input"))
 Context.Elements.Keybind = require(elementsFolder:WaitForChild("Keybind"))
 Context.Elements.Paragraph = require(elementsFolder:WaitForChild("Paragraph"))
 Context.Elements.Divider = require(elementsFolder:WaitForChild("Divider"))
+Context.Elements.ProgressBar = require(elementsFolder:WaitForChild("ProgressBar"))
+Context.Elements.StatCard = require(elementsFolder:WaitForChild("StatCard"))
+Context.Elements.LogPanel = require(elementsFolder:WaitForChild("LogPanel"))
+Context.Elements.Callout = require(elementsFolder:WaitForChild("Callout"))
+Context.Elements.ActionRow = require(elementsFolder:WaitForChild("ActionRow"))
 
 function MidasUI:_Warn(category, message)
 	if not self._debug then
@@ -115,13 +128,30 @@ function MidasUI:GetDebugState()
 		keybindCount = keybindCount + 1
 	end
 
+	local commandCount = 0
+	for _, command in pairs(self._commands or {}) do
+		if not command.Owner or (not command.Owner.Destroyed and not command.Owner.Closed) then
+			commandCount = commandCount + 1
+		end
+	end
+
+	local searchItemCount = 0
+	for _ in pairs(self._searchItems or {}) do
+		searchItemCount = searchItemCount + 1
+	end
+
 	return {
 		Version = self.Version,
 		Theme = self.ThemeName,
 		WindowCount = #self._windows,
 		FlagCount = flagCount,
 		KeybindCount = keybindCount,
+		CommandCount = commandCount,
+		SearchItemCount = searchItemCount,
 		DependencyCount = #self._dependencies,
+		NotificationCount = self._notifications and #self._notifications or 0,
+		HasActiveDialog = self._activeDialog ~= nil,
+		HasOpenCommandPalette = self._activePalette ~= nil,
 		Warnings = table.clone(self._warnings),
 		WarningCategories = table.clone(self._warningCategories),
 	}
@@ -136,6 +166,10 @@ function MidasUI:RegisterTheme(name, values)
 
 	self.Themes = Theme.Registry
 	return true, name
+end
+
+function MidasUI:GetTemplate(nameOrTemplate)
+	return Templates:Get(nameOrTemplate)
 end
 
 function MidasUI:SetTheme(nameOrTheme)
@@ -159,6 +193,7 @@ function MidasUI:SetTheme(nameOrTheme)
 	Notify:SetTheme(Context)
 	Tooltip:SetTheme(Context)
 	Dialog:SetTheme(Context)
+	CommandPalette:SetTheme(Context)
 	return valid, themeName
 end
 
@@ -170,20 +205,102 @@ function MidasUI:CreateWindow(options)
 
 	options = options or {}
 	self:SetTheme(options.Theme or self.ThemeName)
-	return Context.Window.new(Context, options)
+	CommandPalette:Init(Context)
+	local window = Context.Window.new(Context, options)
+	Commands:IndexObject(self, window, "Window")
+	return window
+end
+
+function MidasUI:_IsCommandPaletteHotkey(input)
+	if not input or input.KeyCode ~= self.CommandPaletteKeyCode then
+		return false
+	end
+
+	local userInputService = game:GetService("UserInputService")
+	return userInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+		or userInputService:IsKeyDown(Enum.KeyCode.RightControl)
+end
+
+function MidasUI:RegisterCommand(options)
+	return Commands:Register(self, options)
+end
+
+function MidasUI:UnregisterCommand(idOrController)
+	return Commands:Unregister(self, idOrController)
+end
+
+function MidasUI:RunCommand(idOrController)
+	local id = typeof(idOrController) == "table" and idOrController.Id or idOrController
+	local ok = Commands:Execute(self, id)
+	return ok
+end
+
+function MidasUI:Search(query, options)
+	local results = Commands:Search(self, query, options)
+	local publicResults = {}
+	for _, result in ipairs(results) do
+		local record = result._Record
+		local entry = {
+			Id = result.Id,
+			Type = result.Type,
+			Title = result.Title,
+			Description = result.Description,
+			Category = result.Category,
+		}
+		function entry:Run()
+			Commands:Execute(MidasUI, record)
+			return self
+		end
+		table.insert(publicResults, entry)
+	end
+	return publicResults
+end
+
+function MidasUI:SearchCommands(query)
+	return self:Search(query, { CommandsOnly = true })
+end
+
+function MidasUI:NavigateTo(object)
+	if typeof(object) ~= "table" or not object._midasSearchId then
+		self:_Warn("Search", "NavigateTo expected a live indexed UI controller")
+		return false
+	end
+	local record = self._searchItems and self._searchItems[object._midasSearchId]
+	return Commands:Navigate(self, record)
+end
+
+function MidasUI:OpenCommandPalette(options)
+	return CommandPalette:Open(Context, options)
+end
+
+function MidasUI:CloseCommandPalette()
+	return CommandPalette:Close(Context)
+end
+
+function MidasUI:_CloseExpandedDropdown()
+	if self._expandedDropdown and self._expandedDropdown.SetExpanded then
+		self._expandedDropdown:SetExpanded(false, true)
+	end
+end
+
+function MidasUI:ToggleCommandPalette(options)
+	if self._activePalette then
+		return CommandPalette:Close(Context)
+	end
+	return CommandPalette:Open(Context, options)
 end
 
 function MidasUI:GetFlag(flag)
 	return Flags:Get(self, flag)
 end
 
-function MidasUI:SetFlag(flag, value, fireCallback)
+function MidasUI:SetFlag(flag, value, fireCallback, instant)
 	if typeof(flag) ~= "string" or flag == "" then
 		self:_Warn("Flag", "SetFlag ignored: flag must be a non-empty string")
 		return false
 	end
 
-	Flags:Set(self, flag, value, fireCallback)
+	Flags:Set(self, flag, value, fireCallback, instant)
 	return true
 end
 
@@ -325,6 +442,8 @@ function MidasUI:Dialog(options)
 		self:_Warn("Dialog", "Dialog expected an options table")
 		options = {}
 	end
+	self:CloseCommandPalette()
+	self:_CloseExpandedDropdown()
 	return Dialog:Show(Context, options or {})
 end
 
@@ -347,6 +466,7 @@ function MidasUI:Prompt(options)
 end
 
 function MidasUI:_CleanupOverlays()
+	self:_CloseExpandedDropdown()
 	if self._notifyGui then
 		self._notifyGui:Destroy()
 		self._notifyGui = nil
@@ -366,6 +486,7 @@ function MidasUI:_CleanupOverlays()
 		Utility:DisconnectAll(self._tooltipConnections)
 	end
 
+	CommandPalette:Destroy(Context)
 	Dialog:Close(Context)
 	if self._dialogGui then
 		self._dialogGui:Destroy()
@@ -398,6 +519,8 @@ function MidasUI:Destroy()
 	table.clear(self._flagObjects)
 	table.clear(self._dependencies)
 	table.clear(self.Keybinds)
+	table.clear(self._commands or {})
+	table.clear(self._searchItems or {})
 
 	if self._listeningKeybind then
 		self._listeningKeybind = nil

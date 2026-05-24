@@ -25,10 +25,11 @@ function Toggle.new(context, section, options)
 
 	local theme = self.Theme
 	local utility = self.Utility
+	local compact = section.Compact == true
 
 	local row = utility:Create("TextButton", {
 		Name = self.Name,
-		Size = UDim2.new(1, 0, 0, 38),
+		Size = UDim2.new(1, 0, 0, compact and 32 or 38),
 		BackgroundTransparency = 1,
 		Text = "",
 		AutoButtonColor = false,
@@ -42,7 +43,7 @@ function Toggle.new(context, section, options)
 		Font = Enum.Font.Gotham,
 		Text = self.Name,
 		TextColor3 = theme.Text,
-		TextSize = 13,
+		TextSize = compact and 12 or 13,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = row,
@@ -93,7 +94,7 @@ function Toggle.new(context, section, options)
 			return
 		end
 
-		utility:Tween(label, 0.12, { TextColor3 = self.Theme.Accent })
+		utility:Tween(label, utility.Motion.Fast, { TextColor3 = self.Theme.Accent })
 	end)
 
 	utility:Connect(self.Connections, row.MouseLeave, function()
@@ -101,7 +102,7 @@ function Toggle.new(context, section, options)
 			return
 		end
 
-		utility:Tween(label, 0.12, { TextColor3 = self.Theme.Text })
+		utility:Tween(label, utility.Motion.Fast, { TextColor3 = self.Theme.Text })
 	end)
 
 	context.Flags:Register(self.Library, self.Flag, self)
@@ -134,10 +135,10 @@ function Toggle:SetValue(value, fireCallback)
 	end
 
 	local theme = self.Theme
-	self.Utility:Tween(self.Track, 0.16, {
+	self.Utility:Tween(self.Track, self.Utility.Motion.Standard, {
 		BackgroundColor3 = self.Value and theme.Accent or theme.Background,
 	})
-	self.Utility:Tween(self.Knob, 0.16, {
+	self.Utility:Tween(self.Knob, self.Utility.Motion.Standard, {
 		Position = self.Value and UDim2.fromOffset(23, 3) or UDim2.fromOffset(3, 3),
 		BackgroundColor3 = self.Value and theme.Text or theme.MutedText,
 	})

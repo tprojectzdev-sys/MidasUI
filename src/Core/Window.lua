@@ -8,6 +8,10 @@ function Window.new(context, options)
 	end
 
 	options = options or {}
+	local template, templateName, validTemplate = context.Templates:Get(options.Template or options.Preset)
+	if not validTemplate then
+		context.Library:_Warn("Template", "Unknown template '" .. tostring(options.Template or options.Preset) .. "'; using Default")
+	end
 
 	local self = setmetatable({
 		Context = context,
@@ -18,12 +22,18 @@ function Window.new(context, options)
 		Connections = {},
 		ActiveTab = nil,
 		Minimized = false,
+		Hidden = false,
 		Closed = false,
 		Title = tostring(options.Title or options.Name or "MidasUI"),
 		Subtitle = tostring(options.Subtitle or ""),
 		Icon = options.Icon or "crown",
 		SaveConfig = options.SaveConfig == true,
 		Resizeable = options.Resizeable ~= false and options.Resizable ~= false,
+		Animations = options.Animations ~= false,
+		IntroEnabled = options.Intro ~= false and options.StartupAnimation ~= false and options.Animations ~= false,
+		Tweens = {},
+		Template = template,
+		TemplateName = templateName,
 	}, Window)
 
 	local library = self.Library
@@ -34,7 +44,7 @@ function Window.new(context, options)
 		library:_Warn("API", "Window Size must be a UDim2; using the default size")
 		size = nil
 	end
-	size = size or UDim2.fromOffset(620, 460)
+	size = size or template.DefaultSize
 
 	if options.ConfigFolder ~= nil and typeof(options.ConfigFolder) ~= "string" then
 		library:_Warn("Config", "ConfigFolder must be a string; using the current folder")
@@ -55,6 +65,7 @@ function Window.new(context, options)
 		Name = "MidasUI",
 		IgnoreGuiInset = true,
 		ResetOnSpawn = false,
+		DisplayOrder = 100,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		Parent = utility:GetGuiParent(),
 	})
@@ -66,11 +77,16 @@ function Window.new(context, options)
 		Size = size,
 		BackgroundColor3 = theme.Background,
 		ClipsDescendants = true,
+		Visible = not self.IntroEnabled,
 		Parent = gui,
 	})
 	utility:Corner(main, 12)
 	utility:Stroke(main, theme.Stroke, 0.15)
-	utility:Create("UISizeConstraint", {
+	local mainScale = utility:Create("UIScale", {
+		Scale = self.IntroEnabled and 0.965 or 1,
+		Parent = main,
+	})
+	local sizeConstraint = utility:Create("UISizeConstraint", {
 		MinSize = Vector2.new(420, 320),
 		MaxSize = Vector2.new(980, 720),
 		Parent = main,
@@ -82,24 +98,43 @@ function Window.new(context, options)
 		BackgroundColor3 = theme.Topbar,
 		Parent = main,
 	})
-
-	local icon = utility:Create("TextLabel", {
-		Name = "Icon",
-		Position = UDim2.fromOffset(16, 14),
-		Size = UDim2.fromOffset(28, 28),
-		BackgroundColor3 = theme.Accent,
-		Font = Enum.Font.GothamBold,
-		Text = utility:IconText(self.Icon),
-		TextColor3 = Color3.fromRGB(20, 18, 15),
-		TextSize = 15,
+	local topbarGradient = utility:Create("UIGradient", {
+		Color = ColorSequence.new(theme.Topbar, theme.Background),
+		Rotation = 90,
 		Parent = topbar,
 	})
-	utility:Corner(icon, 8)
+	local accentLine = utility:Create("Frame", {
+		Name = "AccentLine",
+		Position = UDim2.new(0, 14, 1, -1),
+		Size = UDim2.new(1, -28, 0, 1),
+		BackgroundColor3 = theme.Accent,
+		BackgroundTransparency = 0.32,
+		BorderSizePixel = 0,
+		Parent = topbar,
+	})
+
+	local icon = utility:CreateCrownMark(topbar, theme, 30)
+	icon.Position = UDim2.fromOffset(15, 13)
+	local customIcon
+	if typeof(self.Icon) == "string" and string.lower(self.Icon) ~= "crown" then
+		customIcon = utility:Create("TextLabel", {
+			Name = "CustomIcon",
+			Position = UDim2.fromOffset(18, 18),
+			Size = UDim2.fromOffset(11, 11),
+			BackgroundColor3 = theme.Card,
+			Font = Enum.Font.GothamBold,
+			Text = utility:IconText(self.Icon),
+			TextColor3 = theme.Highlight,
+			TextSize = 8,
+			Parent = icon,
+		})
+		utility:Corner(customIcon, 3)
+	end
 
 	local title = utility:Create("TextLabel", {
 		Name = "Title",
-		Position = UDim2.fromOffset(54, 9),
-		Size = UDim2.new(1, -150, 0, 24),
+		Position = UDim2.fromOffset(56, 9),
+		Size = UDim2.new(1, -154, 0, 24),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamSemibold,
 		Text = self.Title,
@@ -112,8 +147,8 @@ function Window.new(context, options)
 
 	local subtitle = utility:Create("TextLabel", {
 		Name = "Subtitle",
-		Position = UDim2.fromOffset(54, 31),
-		Size = UDim2.new(1, -150, 0, 16),
+		Position = UDim2.fromOffset(56, 31),
+		Size = UDim2.new(1, -154, 0, 16),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
 		Text = self.Subtitle,
@@ -197,20 +232,28 @@ function Window.new(context, options)
 
 	self.Gui = gui
 	self.Main = main
+	self.MainScale = mainScale
+	self.SizeConstraint = sizeConstraint
 	self.Topbar = topbar
+	self.TopbarGradient = topbarGradient
+	self.AccentLine = accentLine
 	self.TitleLabel = title
 	self.SubtitleLabel = subtitle
 	self.IconLabel = icon
+	self.CustomIconLabel = customIcon
 	self.Sidebar = sidebar
 	self.TabList = tabList
 	self.Content = content
 	self.ResizeButton = resize
+	self.MinimizeButton = minimize
 	self._restoreSize = size
 	self._themeObjects = {
 		{ main, "BackgroundColor3", "Background" },
 		{ topbar, "BackgroundColor3", "Topbar" },
 		{ sidebar, "BackgroundColor3", "Sidebar" },
-		{ icon, "BackgroundColor3", "Accent" },
+		{ accentLine, "BackgroundColor3", "Accent" },
+		{ customIcon, "BackgroundColor3", "Card" },
+		{ customIcon, "TextColor3", "Highlight" },
 		{ title, "TextColor3", "Text" },
 		{ subtitle, "TextColor3", "MutedText" },
 		{ minimize, "BackgroundColor3", "Card" },
@@ -227,7 +270,7 @@ function Window.new(context, options)
 	local startSize
 
 	utility:Connect(self.Connections, resize.InputBegan, function(input)
-		if not self.Resizeable or self.Minimized then
+		if not self.Resizeable or self.Minimized or self.Transitioning then
 			return
 		end
 
@@ -278,11 +321,11 @@ function Window.new(context, options)
 
 	for _, button in ipairs({ minimize, close }) do
 		utility:Connect(self.Connections, button.MouseEnter, function()
-			utility:Tween(button, 0.12, { BackgroundColor3 = self.Theme.Background })
+			utility:Tween(button, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Background })
 		end)
 
 		utility:Connect(self.Connections, button.MouseLeave, function()
-			utility:Tween(button, 0.12, { BackgroundColor3 = self.Theme.Card })
+			utility:Tween(button, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Card })
 		end)
 	end
 
@@ -291,7 +334,110 @@ function Window.new(context, options)
 	if self.SaveConfig then
 		library:LoadConfig()
 	end
+	if self.IntroEnabled then
+		task.defer(function()
+			self:_PlayIntro()
+		end)
+	end
 
+	return self
+end
+
+function Window:_PlayIntro()
+	if self.Closed or not self.IntroEnabled or not self.Gui or not self.Main then
+		return self
+	end
+
+	self._introToken = (self._introToken or 0) + 1
+	local token = self._introToken
+	local height = self.Main.AbsoluteSize.Y > 0 and self.Main.AbsoluteSize.Y or self._restoreSize.Y.Offset
+	local landing = UDim2.new(0.5, 0, 0.5, (-height / 2) + 29)
+	local crest = self.Utility:CreateCrownMark(self.Gui, self.Theme, 46)
+	crest.AnchorPoint = Vector2.new(0.5, 0.5)
+	crest.Position = UDim2.new(landing.X.Scale, landing.X.Offset, landing.Y.Scale, landing.Y.Offset - 76)
+	crest.Rotation = -18
+	crest.ZIndex = 50
+	for _, item in ipairs(crest:GetDescendants()) do
+		if item:IsA("GuiObject") then
+			item.ZIndex = 51
+		end
+	end
+	self.IntroCrest = crest
+	self.Main.Visible = false
+	self.MainScale.Scale = 0.965
+
+	local drop = self.Utility:TweenTracked(
+		self.Tweens,
+		"Intro",
+		crest,
+		self.Utility.Motion.IntroDrop,
+		{ Position = landing, Rotation = 0 },
+		Enum.EasingStyle.Back,
+		Enum.EasingDirection.Out
+	)
+	drop.Completed:Connect(function()
+		if self.Closed or self._introToken ~= token or not crest.Parent then
+			return
+		end
+
+		self.Main.Visible = true
+		local targetPosition = self.Main.Position
+		self._introTargetPosition = targetPosition
+		self.Main.Position = UDim2.new(targetPosition.X.Scale, targetPosition.X.Offset, targetPosition.Y.Scale, targetPosition.Y.Offset + 10)
+		self.Utility:TweenTracked(
+			self.Tweens,
+			"IntroScale",
+			self.MainScale,
+			self.Utility.Motion.Reveal,
+			{ Scale = 1 },
+			Enum.EasingStyle.Back,
+			Enum.EasingDirection.Out
+		)
+		self.Utility:TweenTracked(
+			self.Tweens,
+			"IntroWindow",
+			self.Main,
+			self.Utility.Motion.Reveal,
+			{ Position = targetPosition },
+			Enum.EasingStyle.Quart,
+			Enum.EasingDirection.Out
+		)
+		self.Utility:Tween(crest, self.Utility.Motion.Fast, { BackgroundTransparency = 1 })
+		task.delay(self.Utility.Motion.Reveal, function()
+			if self._introToken == token then
+				self._introTargetPosition = nil
+			end
+			if crest.Parent then
+				crest:Destroy()
+			end
+			if self.IntroCrest == crest then
+				self.IntroCrest = nil
+			end
+		end)
+	end)
+	return self
+end
+
+function Window:_CancelIntro()
+	self._introToken = (self._introToken or 0) + 1
+	for _, key in ipairs({ "Intro", "IntroScale", "IntroWindow" }) do
+		local tween = self.Tweens[key]
+		if tween then
+			tween:Cancel()
+			self.Tweens[key] = nil
+		end
+	end
+	if self._introTargetPosition then
+		self.Main.Position = self._introTargetPosition
+		self._introTargetPosition = nil
+	end
+	if self.IntroCrest then
+		self.IntroCrest:Destroy()
+		self.IntroCrest = nil
+	end
+	if self.Main then
+		self.Main.Visible = true
+	end
 	return self
 end
 
@@ -308,6 +454,7 @@ function Window:CreateTab(options)
 	end
 	local tab = self.Context.Tab.new(self.Context, self, options)
 	table.insert(self.Tabs, tab)
+	self.Context.Commands:IndexObject(self.Library, tab, "Tab")
 
 	if not self.ActiveTab then
 		self:SelectTab(tab)
@@ -348,20 +495,70 @@ function Window:SetMinimized(value)
 		return self
 	end
 
-	self.Minimized = value == true
-	self.Library._windowSettings.Minimized = self.Minimized
-
-	local targetSize = self.Minimized and UDim2.fromOffset(self.Main.AbsoluteSize.X, 56) or self.Main.Size
-	if not self.Minimized then
-		targetSize = self._restoreSize or targetSize
-	else
-		self._restoreSize = self.Main.Size
+	local minimized = value == true
+	if self.Minimized == minimized then
+		return self
 	end
 
-	self.Utility:Tween(self.Main, 0.22, { Size = targetSize })
-	self.Sidebar.Visible = not self.Minimized
-	self.Content.Visible = not self.Minimized
-	self.ResizeButton.Visible = self.Resizeable and not self.Minimized
+	self.Library:CloseCommandPalette()
+	self.Library:_CloseExpandedDropdown()
+	self:_CancelIntro()
+	self.Minimized = minimized
+	self.Library._windowSettings.Minimized = self.Minimized
+	self._minimizeToken = (self._minimizeToken or 0) + 1
+	local token = self._minimizeToken
+	local wasTransitioning = self.Transitioning == true
+	self.Transitioning = true
+
+	local targetSize
+	if self.Minimized then
+		if not wasTransitioning then
+			self._restoreSize = self.Main.Size
+		end
+		self.SizeConstraint.MinSize = Vector2.new(420, 56)
+		local width = self._restoreSize.X.Offset > 0 and self._restoreSize.X.Offset or self.Main.AbsoluteSize.X
+		targetSize = UDim2.fromOffset(width, 56)
+		self.Sidebar.Visible = false
+		self.Content.Visible = false
+		self.ResizeButton.Visible = false
+		self.MinimizeButton.Text = "+"
+		self.Context.Tooltip:Hide(self.Context)
+		self.Context.Dialog:Close(self.Context)
+	else
+		targetSize = self._restoreSize or UDim2.fromOffset(self.Main.AbsoluteSize.X, 460)
+		self.Sidebar.Visible = true
+		self.Content.Visible = true
+		self.MinimizeButton.Text = "-"
+	end
+
+	if self.Animations then
+		local tween = self.Utility:TweenTracked(
+			self.Tweens,
+			"Minimize",
+			self.Main,
+			self.Utility.Motion.Reveal,
+			{ Size = targetSize },
+			self.Minimized and Enum.EasingStyle.Quart or Enum.EasingStyle.Back,
+			Enum.EasingDirection.Out
+		)
+		tween.Completed:Connect(function()
+			if self.Closed or self._minimizeToken ~= token then
+				return
+			end
+			self.Transitioning = false
+			if not self.Minimized then
+				self.SizeConstraint.MinSize = Vector2.new(420, 320)
+				self.ResizeButton.Visible = self.Resizeable
+			end
+		end)
+	else
+		self.Main.Size = targetSize
+		self.Transitioning = false
+		if not self.Minimized then
+			self.SizeConstraint.MinSize = Vector2.new(420, 320)
+			self.ResizeButton.Visible = self.Resizeable
+		end
+	end
 	return self
 end
 
@@ -390,6 +587,11 @@ function Window:SetTheme(theme)
 	end
 
 	self.Utility:ApplyStrokeTheme(self.Main, theme.Stroke)
+	self.Utility:ApplyCrownTheme(self.IconLabel, theme)
+	self.TopbarGradient.Color = ColorSequence.new(theme.Topbar, theme.Background)
+	if self.IntroCrest then
+		self.Utility:ApplyCrownTheme(self.IntroCrest, theme)
+	end
 
 	for _, tab in ipairs(self.Tabs) do
 		tab:SetTheme(theme)
@@ -399,16 +601,84 @@ function Window:SetTheme(theme)
 end
 
 function Window:Show()
-	if not self.Closed and self.Gui then
-		self.Gui.Enabled = true
+	if self.Closed or not self.Gui or not self.Hidden then
+		return self
+	end
+
+	self.Hidden = false
+	self._visibilityToken = (self._visibilityToken or 0) + 1
+	self.Gui.Enabled = true
+	self.Main.Visible = true
+	local targetPosition = self._shownPosition or self.Main.Position
+	if self.Animations then
+		self.Main.Position = UDim2.new(targetPosition.X.Scale, targetPosition.X.Offset, targetPosition.Y.Scale, targetPosition.Y.Offset + 9)
+		self.MainScale.Scale = 0.975
+		self.Utility:TweenTracked(
+			self.Tweens,
+			"VisibilityPosition",
+			self.Main,
+			self.Utility.Motion.Reveal,
+			{ Position = targetPosition },
+			Enum.EasingStyle.Quart,
+			Enum.EasingDirection.Out
+		)
+		self.Utility:TweenTracked(
+			self.Tweens,
+			"VisibilityScale",
+			self.MainScale,
+			self.Utility.Motion.Reveal,
+			{ Scale = 1 },
+			Enum.EasingStyle.Back,
+			Enum.EasingDirection.Out
+		)
+	else
+		self.Main.Position = targetPosition
+		self.MainScale.Scale = 1
 	end
 	return self
 end
 
 function Window:Hide()
-	if not self.Closed and self.Gui then
+	if self.Closed or not self.Gui or self.Hidden then
+		return self
+	end
+
+	self:_CancelIntro()
+	self.Library:CloseCommandPalette()
+	self.Library:_CloseExpandedDropdown()
+	self.Hidden = true
+	self._visibilityToken = (self._visibilityToken or 0) + 1
+	local token = self._visibilityToken
+	self._shownPosition = self.Main.Position
+	self.Context.Tooltip:Hide(self.Context)
+	self.Context.Dialog:Close(self.Context)
+	if self.Animations then
+		local targetPosition = UDim2.new(self.Main.Position.X.Scale, self.Main.Position.X.Offset, self.Main.Position.Y.Scale, self.Main.Position.Y.Offset + 8)
+		self.Utility:TweenTracked(
+			self.Tweens,
+			"VisibilityScale",
+			self.MainScale,
+			self.Utility.Motion.Standard,
+			{ Scale = 0.975 },
+			Enum.EasingStyle.Quad,
+			Enum.EasingDirection.In
+		)
+		local tween = self.Utility:TweenTracked(
+			self.Tweens,
+			"VisibilityPosition",
+			self.Main,
+			self.Utility.Motion.Standard,
+			{ Position = targetPosition },
+			Enum.EasingStyle.Quad,
+			Enum.EasingDirection.In
+		)
+		tween.Completed:Connect(function()
+			if not self.Closed and self.Hidden and self._visibilityToken == token then
+				self.Gui.Enabled = false
+			end
+		end)
+	else
 		self.Gui.Enabled = false
-		self.Context.Tooltip:Hide(self.Context)
 	end
 	return self
 end
@@ -461,6 +731,28 @@ function Window:Notify(options)
 	return self
 end
 
+function Window:RegisterCommand(options)
+	if self.Closed then
+		self.Library:_Warn("Lifecycle", "RegisterCommand ignored: window is destroyed")
+		return nil
+	end
+	if typeof(options) ~= "table" then
+		self.Library:_Warn("Command", "Window:RegisterCommand expected an options table")
+		return nil
+	end
+
+	local values = table.clone(options)
+	values.Owner = values.Owner or self
+	return self.Library:RegisterCommand(values)
+end
+
+function Window:OpenCommandPalette(options)
+	if self.Closed then
+		return false
+	end
+	return self.Library:OpenCommandPalette(options)
+end
+
 function Window:Dialog(options)
 	if self.Closed then
 		return nil
@@ -476,6 +768,10 @@ function Window:Destroy()
 
 	self.Closed = true
 	self.Destroyed = true
+	self.Library:CloseCommandPalette()
+	self.Library:_CloseExpandedDropdown()
+	self:_CancelIntro()
+	self.Utility:CancelTweens(self.Tweens)
 
 	if self.SaveConfig then
 		self.Library:SaveConfig()
