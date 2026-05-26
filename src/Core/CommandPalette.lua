@@ -3,11 +3,15 @@ local UserInputService = game:GetService("UserInputService")
 local CommandPalette = {}
 
 local function applyRowState(palette, index)
+	local theme = palette.Library.Theme
 	for itemIndex, item in ipairs(palette.Rows or {}) do
 		local active = itemIndex == index
-		item.Button.BackgroundTransparency = active and 0.15 or 1
-		item.Title.TextColor3 = active and palette.Library.Theme.Text or palette.Library.Theme.MutedText
-		item.Hint.TextColor3 = active and palette.Library.Theme.Accent or palette.Library.Theme.MutedText
+		item.Button.BackgroundColor3 = active and theme.AccentSoft or theme.Background
+		item.Button.BackgroundTransparency = active and 0.12 or 1
+		item.Title.TextColor3 = theme.Text
+		item.Title.TextTransparency = active and 0 or 0.08
+		item.Description.TextColor3 = theme.MutedText
+		item.Hint.TextColor3 = active and theme.Accent or theme.MutedText
 	end
 end
 
@@ -25,6 +29,9 @@ function CommandPalette:Init(context)
 		end
 
 		if library:_IsCommandPaletteHotkey(input) then
+			if library._listeningKeybind then
+				return
+			end
 			if processed and not library._activePalette then
 				return
 			end
@@ -65,6 +72,7 @@ function CommandPalette:Close(context)
 	if palette.SearchBox and palette.SearchBox:IsFocused() then
 		palette.SearchBox:ReleaseFocus()
 	end
+	context.Utility:DisconnectAll(palette.RowConnections)
 	context.Utility:DisconnectAll(palette.Connections)
 	if palette.Overlay then
 		palette.Overlay:Destroy()
@@ -86,6 +94,7 @@ function CommandPalette:SetTheme(context)
 	palette.SearchBox.TextColor3 = theme.Text
 	palette.SearchBox.PlaceholderColor3 = theme.MutedText
 	palette.Footer.TextColor3 = theme.MutedText
+	palette.EmptyLabel.TextColor3 = theme.MutedText
 	context.Utility:ApplyStrokeTheme(palette.Card, theme.Stroke)
 	context.Utility:ApplyStrokeTheme(palette.SearchBox, theme.Stroke)
 	for _, row in ipairs(palette.Rows or {}) do
@@ -127,6 +136,7 @@ function CommandPalette:Open(context, options)
 		Position = UDim2.new(0.5, 0, 0.16, 0),
 		Size = UDim2.fromOffset(520, 410),
 		BackgroundColor3 = theme.Card,
+		Active = true,
 		ZIndex = 101,
 		Parent = overlay,
 	})
@@ -175,6 +185,18 @@ function CommandPalette:Open(context, options)
 		Parent = card,
 	})
 	utility:List(list, 4)
+	local emptyLabel = utility:Create("TextLabel", {
+		Name = "Empty",
+		Size = UDim2.new(1, 0, 0, 54),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = "No matching commands or controls",
+		TextColor3 = theme.MutedText,
+		TextSize = 12,
+		Visible = false,
+		ZIndex = 103,
+		Parent = list,
+	})
 	local footer = utility:Create("TextLabel", {
 		Name = "Footer",
 		AnchorPoint = Vector2.new(0, 1),
@@ -197,14 +219,17 @@ function CommandPalette:Open(context, options)
 		Header = header,
 		SearchBox = searchBox,
 		List = list,
+		EmptyLabel = emptyLabel,
 		Footer = footer,
 		Connections = {},
+		RowConnections = {},
 		Rows = {},
 		Results = {},
 		SelectedIndex = 1,
 	}
 	library._activePalette = palette
 
+	local refresh
 	local function runSelected()
 		local result = palette.Results[palette.SelectedIndex]
 		if not result then
@@ -213,10 +238,17 @@ function CommandPalette:Open(context, options)
 		local ok, closeOnRun = context.Commands:Execute(library, result._Record)
 		if ok and closeOnRun then
 			CommandPalette:Close(context)
+		elseif ok and refresh then
+			task.defer(function()
+				if library._activePalette == palette then
+					refresh()
+				end
+			end)
 		end
 	end
 
-	local function refresh()
+	refresh = function()
+		utility:DisconnectAll(palette.RowConnections)
 		for _, row in ipairs(palette.Rows) do
 			row.Button:Destroy()
 		end
@@ -225,6 +257,7 @@ function CommandPalette:Open(context, options)
 		while #palette.Results > 7 do
 			table.remove(palette.Results)
 		end
+		emptyLabel.Visible = #palette.Results == 0
 		palette.SelectedIndex = math.clamp(palette.SelectedIndex, 1, math.max(#palette.Results, 1))
 
 		for index, result in ipairs(palette.Results) do
@@ -282,7 +315,11 @@ function CommandPalette:Open(context, options)
 				ZIndex = 104,
 				Parent = button,
 			})
-			utility:Connect(palette.Connections, button.MouseButton1Click, function()
+			utility:Connect(palette.RowConnections, button.MouseEnter, function()
+				palette.SelectedIndex = index
+				applyRowState(palette, palette.SelectedIndex)
+			end)
+			utility:Connect(palette.RowConnections, button.MouseButton1Click, function()
 				palette.SelectedIndex = index
 				runSelected()
 			end)

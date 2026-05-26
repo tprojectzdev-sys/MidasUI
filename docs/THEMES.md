@@ -51,3 +51,17 @@ You may also call `MidasUI:SetTheme({ Accent = Color3.fromRGB(...) })` for an an
 `MidasUI:SetTheme("Missing")` safely applies `DarkGold` and returns `false, "DarkGold"`. It only logs a warning when `MidasUI:SetDebug(true)` has been enabled.
 
 Runtime theme changes refresh an open command palette as well as windows, dialogs, notifications, and tooltips.
+
+## Theme Observers
+
+Use `OnThemeChanged` when application-owned visuals outside MidasUI need to follow an applied theme:
+
+```lua
+local connection = MidasUI:OnThemeChanged(function(appliedName, theme, valid)
+	print("Theme applied:", appliedName, valid)
+end)
+
+connection:Disconnect()
+```
+
+Observers execute through the protected callback path and are cleared when `MidasUI:Destroy()` releases the runtime.

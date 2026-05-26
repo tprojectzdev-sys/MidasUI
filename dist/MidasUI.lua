@@ -1263,9 +1263,15 @@ function Tooltip:Show(context, text)
 		return
 	end
 
+	local library = context.Library
+	if library._activeDialog or library._activePalette
+		or (library._expandedDropdown and library._expandedDropdown.Expanded) then
+		self:Hide(context)
+		return
+	end
+
 	self:Init(context)
 
-	local library = context.Library
 	local frame = library._tooltipFrame
 	local label = library._tooltipLabel
 
@@ -1337,8 +1343,13 @@ function Keybinds:Init(library)
 	library._keybindsReady = true
 	library._keybindConnections = library._keybindConnections or {}
 
-	table.insert(library._keybindConnections, UserInputService.InputBegan:Connect(function(input)
+	table.insert(library._keybindConnections, UserInputService.InputBegan:Connect(function(input, processed)
 		if input.UserInputType ~= Enum.UserInputType.Keyboard then
+			return
+		end
+
+		if library._activeDialog or library._activePalette
+			or (library._expandedDropdown and library._expandedDropdown.Expanded) then
 			return
 		end
 
@@ -1352,7 +1363,7 @@ function Keybinds:Init(library)
 			return
 		end
 
-		if UserInputService:GetFocusedTextBox() then
+		if processed or UserInputService:GetFocusedTextBox() then
 			return
 		end
 
@@ -1918,7 +1929,12 @@ function Commands:Register(library, options)
 		library._commandSequence = library._commandSequence + 1
 		id = "command_" .. library._commandSequence
 	end
-	if library._commands[id] then
+	local existing = library._commands[id]
+	if existing and existing.Owner and (existing.Owner.Destroyed or existing.Owner.Closed) then
+		library._commands[id] = nil
+		existing = nil
+	end
+	if existing then
 		library:_Warn("Command", "RegisterCommand ignored duplicate Id '" .. id .. "'")
 		return nil
 	end
@@ -1950,12 +1966,12 @@ function Commands:Register(library, options)
 	}
 
 	function controller:Unregister()
-		library:UnregisterCommand(id)
+		library:UnregisterCommand(self)
 		return self
 	end
 
 	function controller:Run()
-		library:RunCommand(id)
+		library:RunCommand(self)
 		return self
 	end
 
@@ -1967,6 +1983,9 @@ function Commands:Unregister(library, idOrController)
 	self:Init(library)
 	local id = typeof(idOrController) == "table" and idOrController.Id or idOrController
 	if typeof(id) ~= "string" or library._commands[id] == nil then
+		return false
+	end
+	if typeof(idOrController) == "table" and library._commands[id].Controller ~= idOrController then
 		return false
 	end
 	library._commands[id] = nil
@@ -1987,6 +2006,11 @@ function Commands:Execute(library, idOrResult)
 	local result = idOrResult
 	if typeof(idOrResult) == "string" then
 		result = library._commands[idOrResult]
+	elseif typeof(idOrResult) == "table" and idOrResult.Type == nil and idOrResult.Id ~= nil then
+		result = library._commands[idOrResult.Id]
+		if result and result.Controller ~= idOrResult then
+			result = nil
+		end
 	end
 	if not result then
 		library:_Warn("Command", "Attempted to execute a missing command")
@@ -2159,11 +2183,15 @@ local UserInputService = game:GetService("UserInputService")
 local CommandPalette = {}
 
 local function applyRowState(palette, index)
+	local theme = palette.Library.Theme
 	for itemIndex, item in ipairs(palette.Rows or {}) do
 		local active = itemIndex == index
-		item.Button.BackgroundTransparency = active and 0.15 or 1
-		item.Title.TextColor3 = active and palette.Library.Theme.Text or palette.Library.Theme.MutedText
-		item.Hint.TextColor3 = active and palette.Library.Theme.Accent or palette.Library.Theme.MutedText
+		item.Button.BackgroundColor3 = active and theme.AccentSoft or theme.Background
+		item.Button.BackgroundTransparency = active and 0.12 or 1
+		item.Title.TextColor3 = theme.Text
+		item.Title.TextTransparency = active and 0 or 0.08
+		item.Description.TextColor3 = theme.MutedText
+		item.Hint.TextColor3 = active and theme.Accent or theme.MutedText
 	end
 end
 
@@ -2181,6 +2209,9 @@ function CommandPalette:Init(context)
 		end
 
 		if library:_IsCommandPaletteHotkey(input) then
+			if library._listeningKeybind then
+				return
+			end
 			if processed and not library._activePalette then
 				return
 			end
@@ -2221,6 +2252,7 @@ function CommandPalette:Close(context)
 	if palette.SearchBox and palette.SearchBox:IsFocused() then
 		palette.SearchBox:ReleaseFocus()
 	end
+	context.Utility:DisconnectAll(palette.RowConnections)
 	context.Utility:DisconnectAll(palette.Connections)
 	if palette.Overlay then
 		palette.Overlay:Destroy()
@@ -2242,6 +2274,7 @@ function CommandPalette:SetTheme(context)
 	palette.SearchBox.TextColor3 = theme.Text
 	palette.SearchBox.PlaceholderColor3 = theme.MutedText
 	palette.Footer.TextColor3 = theme.MutedText
+	palette.EmptyLabel.TextColor3 = theme.MutedText
 	context.Utility:ApplyStrokeTheme(palette.Card, theme.Stroke)
 	context.Utility:ApplyStrokeTheme(palette.SearchBox, theme.Stroke)
 	for _, row in ipairs(palette.Rows or {}) do
@@ -2283,6 +2316,7 @@ function CommandPalette:Open(context, options)
 		Position = UDim2.new(0.5, 0, 0.16, 0),
 		Size = UDim2.fromOffset(520, 410),
 		BackgroundColor3 = theme.Card,
+		Active = true,
 		ZIndex = 101,
 		Parent = overlay,
 	})
@@ -2331,6 +2365,18 @@ function CommandPalette:Open(context, options)
 		Parent = card,
 	})
 	utility:List(list, 4)
+	local emptyLabel = utility:Create("TextLabel", {
+		Name = "Empty",
+		Size = UDim2.new(1, 0, 0, 54),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = "No matching commands or controls",
+		TextColor3 = theme.MutedText,
+		TextSize = 12,
+		Visible = false,
+		ZIndex = 103,
+		Parent = list,
+	})
 	local footer = utility:Create("TextLabel", {
 		Name = "Footer",
 		AnchorPoint = Vector2.new(0, 1),
@@ -2353,14 +2399,17 @@ function CommandPalette:Open(context, options)
 		Header = header,
 		SearchBox = searchBox,
 		List = list,
+		EmptyLabel = emptyLabel,
 		Footer = footer,
 		Connections = {},
+		RowConnections = {},
 		Rows = {},
 		Results = {},
 		SelectedIndex = 1,
 	}
 	library._activePalette = palette
 
+	local refresh
 	local function runSelected()
 		local result = palette.Results[palette.SelectedIndex]
 		if not result then
@@ -2369,10 +2418,17 @@ function CommandPalette:Open(context, options)
 		local ok, closeOnRun = context.Commands:Execute(library, result._Record)
 		if ok and closeOnRun then
 			CommandPalette:Close(context)
+		elseif ok and refresh then
+			task.defer(function()
+				if library._activePalette == palette then
+					refresh()
+				end
+			end)
 		end
 	end
 
-	local function refresh()
+	refresh = function()
+		utility:DisconnectAll(palette.RowConnections)
 		for _, row in ipairs(palette.Rows) do
 			row.Button:Destroy()
 		end
@@ -2381,6 +2437,7 @@ function CommandPalette:Open(context, options)
 		while #palette.Results > 7 do
 			table.remove(palette.Results)
 		end
+		emptyLabel.Visible = #palette.Results == 0
 		palette.SelectedIndex = math.clamp(palette.SelectedIndex, 1, math.max(#palette.Results, 1))
 
 		for index, result in ipairs(palette.Results) do
@@ -2438,7 +2495,11 @@ function CommandPalette:Open(context, options)
 				ZIndex = 104,
 				Parent = button,
 			})
-			utility:Connect(palette.Connections, button.MouseButton1Click, function()
+			utility:Connect(palette.RowConnections, button.MouseEnter, function()
+				palette.SelectedIndex = index
+				applyRowState(palette, palette.SelectedIndex)
+			end)
+			utility:Connect(palette.RowConnections, button.MouseButton1Click, function()
 				palette.SelectedIndex = index
 				runSelected()
 			end)
@@ -2972,6 +3033,9 @@ function Window:SelectTab(tab)
 		return self
 	end
 
+	if self.ActiveTab ~= tab then
+		self.Library:_CloseExpandedDropdown()
+	end
 	self.ActiveTab = tab
 
 	for _, item in ipairs(self.Tabs) do
@@ -3441,6 +3505,11 @@ function Tab:Hide()
 		return self
 	end
 
+	local dropdown = self.Library._expandedDropdown
+	if dropdown and dropdown.Section and dropdown.Section.Tab == self then
+		dropdown:SetExpanded(false, true)
+	end
+
 	if self.Button then
 		self.Button.Visible = false
 	end
@@ -3741,6 +3810,11 @@ end
 function Section:Hide()
 	if self.Destroyed then
 		return self
+	end
+
+	local dropdown = self.Library._expandedDropdown
+	if dropdown and dropdown.Section == self then
+		dropdown:SetExpanded(false, true)
 	end
 
 	if self.Frame then
@@ -4588,7 +4662,7 @@ function Slider:SetRange(min, max, increment)
 
 	self.Min = min
 	self.Max = max
-	self.Increment = math.max(math.abs(tonumber(increment) or self.Increment), 0.0001)
+	self.Increment = math.max(math.abs(tonumber(increment) or self.Increment), 0.000001)
 	self.Precision = math.max(decimalPlaces(self.Min), decimalPlaces(self.Max), decimalPlaces(self.Increment))
 	self:SetValue(self.Value, false)
 	return self
@@ -4670,6 +4744,7 @@ function Dropdown.new(context, section, options)
 		Value = options.Default,
 		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
+		OptionConnections = {},
 		InteractionConnections = {},
 		Expanded = false,
 		Enabled = true,
@@ -4761,6 +4836,9 @@ function Dropdown.new(context, section, options)
 		Size = UDim2.new(1, 0, 0, 0),
 		BackgroundColor3 = theme.Background,
 		ClipsDescendants = true,
+		Active = true,
+		Visible = false,
+		ZIndex = 21,
 		Parent = frame,
 	})
 	utility:Corner(list, 8)
@@ -4781,6 +4859,7 @@ function Dropdown.new(context, section, options)
 		TextSize = compact and 12 or 13,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Visible = self.SearchEnabled,
+		ZIndex = 22,
 		Parent = list,
 	})
 	utility:Corner(searchBox, 6)
@@ -4799,9 +4878,22 @@ function Dropdown.new(context, section, options)
 		ScrollBarThickness = 3,
 		ScrollBarImageColor3 = theme.Accent,
 		ScrollBarImageTransparency = 0.3,
+		ZIndex = 22,
 		Parent = list,
 	})
 	local optionLayout = utility:List(scroll, 4)
+	local emptyLabel = utility:Create("TextLabel", {
+		Name = "Empty",
+		Size = UDim2.new(1, 0, 0, self.OptionHeight),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = "No options found",
+		TextColor3 = theme.MutedText,
+		TextSize = compact and 12 or 13,
+		Visible = false,
+		ZIndex = 23,
+		Parent = scroll,
+	})
 
 	self.Instance = frame
 	self.Label = label
@@ -4812,6 +4904,7 @@ function Dropdown.new(context, section, options)
 	self.SearchBox = searchBox
 	self.Scroll = scroll
 	self.OptionLayout = optionLayout
+	self.EmptyLabel = emptyLabel
 	self.CanvasConnection = utility:BindCanvas(scroll, optionLayout, 4)
 	self.OptionButtons = {}
 
@@ -4831,6 +4924,27 @@ function Dropdown.new(context, section, options)
 		self:SetExpanded(not self.Expanded)
 	end)
 
+	utility:Connect(self.Connections, button:GetPropertyChangedSignal("AbsolutePosition"), function()
+		if self.Expanded then
+			self:_PositionOverlay()
+		end
+	end)
+
+	utility:Connect(self.Connections, button:GetPropertyChangedSignal("AbsoluteSize"), function()
+		if self.Expanded then
+			self:_ResizeExpanded(true)
+		end
+	end)
+
+	local camera = workspace.CurrentCamera
+	if camera then
+		utility:Connect(self.Connections, camera:GetPropertyChangedSignal("ViewportSize"), function()
+			if self.Expanded then
+				self:_PositionOverlay()
+			end
+		end)
+	end
+
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
 	self:SetExpanded(false, true)
@@ -4839,20 +4953,70 @@ function Dropdown.new(context, section, options)
 	return self
 end
 
+function Dropdown:_GetOverlayGui()
+	local gui = self.Library._dropdownGui
+	if gui and gui.Parent then
+		return gui
+	end
+
+	gui = self.Utility:Create("ScreenGui", {
+		Name = "MidasUI_Dropdowns",
+		IgnoreGuiInset = true,
+		ResetOnSpawn = false,
+		DisplayOrder = 250,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = self.Utility:GetGuiParent(),
+	})
+	self.Library._dropdownGui = gui
+	return gui
+end
+
+function Dropdown:_PositionOverlay()
+	if not self.Expanded or not self.List or not self.List.Parent then
+		return
+	end
+
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+	local width = math.max(self.Button.AbsoluteSize.X, 1)
+	local height = self.List.Size.Y.Offset
+	local margin = 8
+	local x = math.clamp(self.Button.AbsolutePosition.X, margin, math.max(margin, viewport.X - width - margin))
+	local below = self.Button.AbsolutePosition.Y + self.Button.AbsoluteSize.Y + 6
+	local above = self.Button.AbsolutePosition.Y - height - 6
+	local maximumY = math.max(margin, viewport.Y - height - margin)
+	local y = below
+
+	if below + height > viewport.Y - margin and above >= margin then
+		y = above
+	else
+		y = math.clamp(below, margin, maximumY)
+	end
+
+	self.List.Position = UDim2.fromOffset(x, y)
+end
+
 function Dropdown:_ResizeExpanded(instant)
 	local maxVisible = math.max(self.MaxVisibleOptions, 1)
-	local optionHeight = math.min(#self.FilteredOptions, maxVisible) * self.OptionStep
+	local displayedOptions = math.max(#self.FilteredOptions, 1)
+	local optionHeight = math.min(displayedOptions, maxVisible) * self.OptionStep
 	local searchHeight = self.SearchEnabled and (self.SearchHeight + 8) or 0
 	local height = self.Expanded and optionHeight + searchHeight + 8 or 0
-	local frameHeight = self.Expanded and (self.ListTop + height) or self.BaseHeight
+	local width = math.max(self.Button.AbsoluteSize.X, self.Instance.AbsoluteSize.X, 1)
+	local targetSize = UDim2.fromOffset(width, height)
+
+	self.Instance.Size = UDim2.new(1, 0, 0, self.BaseHeight)
 
 	if instant then
-		self.List.Size = UDim2.new(1, 0, 0, height)
-		self.Instance.Size = UDim2.new(1, 0, 0, frameHeight)
+		self.List.Size = targetSize
 	else
 		local style = self.Expanded and Enum.EasingStyle.Back or Enum.EasingStyle.Quad
-		self.Utility:Tween(self.List, self.Utility.Motion.Standard, { Size = UDim2.new(1, 0, 0, height) }, style)
-		self.Utility:Tween(self.Instance, self.Utility.Motion.Standard, { Size = UDim2.new(1, 0, 0, frameHeight) }, style)
+		self.List.Size = UDim2.fromOffset(width, self.List.Size.Y.Offset)
+		self.Utility:Tween(self.List, self.Utility.Motion.Standard, { Size = targetSize }, style)
+	end
+
+	if self.Expanded then
+		self:_PositionOverlay()
 	end
 end
 
@@ -4885,7 +5049,15 @@ function Dropdown:_FilterOptions(query)
 			table.insert(self.FilteredOptions, item)
 		end
 	end
-	self:_SetKeyboardSelection(1)
+	self.EmptyLabel.Visible = #self.FilteredOptions == 0
+	local selectedIndex = 1
+	for index, item in ipairs(self.FilteredOptions) do
+		if item.Value == self.Value then
+			selectedIndex = index
+			break
+		end
+	end
+	self:_SetKeyboardSelection(selectedIndex)
 	if self.Expanded then
 		self:_ResizeExpanded(true)
 	end
@@ -4893,10 +5065,27 @@ end
 
 function Dropdown:_EndInteraction()
 	self.Utility:DisconnectAll(self.InteractionConnections)
+	if self.DismissOverlay then
+		self.DismissOverlay:Destroy()
+		self.DismissOverlay = nil
+	end
 end
 
 function Dropdown:_BeginInteraction()
 	self:_EndInteraction()
+	self.DismissOverlay = self.Utility:Create("TextButton", {
+		Name = "Dismiss",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Text = "",
+		AutoButtonColor = false,
+		ZIndex = 20,
+		Parent = self:_GetOverlayGui(),
+	})
+	self.Utility:Connect(self.InteractionConnections, self.DismissOverlay.MouseButton1Click, function()
+		self:SetExpanded(false)
+	end)
+
 	self.Utility:Connect(self.InteractionConnections, game:GetService("UserInputService").InputBegan, function(input)
 		if not self.Expanded or input.UserInputType ~= Enum.UserInputType.Keyboard then
 			return
@@ -4938,28 +5127,34 @@ function Dropdown:_addOption(option)
 		TextSize = self.Section.Compact and 12 or 13,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		AutoButtonColor = false,
+		ZIndex = 23,
 		Parent = self.Scroll,
 	})
 	utility:Corner(button, 6)
 
-	self.Utility:Connect(self.Connections, button.MouseEnter, function()
+	local item = { Button = button, Value = option }
+	table.insert(self.OptionButtons, item)
+
+	self.Utility:Connect(self.OptionConnections, button.MouseEnter, function()
 		if self.Enabled == false then
 			return
 		end
 
-		self.Utility:Tween(button, 0.12, { BackgroundTransparency = 0.25 })
+		local index = table.find(self.FilteredOptions, item)
+		if index then
+			self:_SetKeyboardSelection(index)
+		end
 	end)
 
-	self.Utility:Connect(self.Connections, button.MouseLeave, function()
+	self.Utility:Connect(self.OptionConnections, button.MouseLeave, function()
 		if self.Enabled == false then
 			return
 		end
 
-		local active = self.Value == option
-		self.Utility:Tween(button, 0.12, { BackgroundTransparency = active and 0 or 1 })
+		self:_SetKeyboardSelection(self.SelectedIndex)
 	end)
 
-	utility:Connect(self.Connections, button.MouseButton1Click, function()
+	utility:Connect(self.OptionConnections, button.MouseButton1Click, function()
 		if self.Enabled == false then
 			return
 		end
@@ -4971,8 +5166,6 @@ function Dropdown:_addOption(option)
 		end
 		self:SetExpanded(false)
 	end)
-
-	table.insert(self.OptionButtons, { Button = button, Value = option })
 end
 
 function Dropdown:GetValue()
@@ -4991,6 +5184,9 @@ function Dropdown:SetExpanded(value, instant)
 	self.Expanded = expanded
 	if self.Expanded then
 		self.Library._expandedDropdown = self
+		self.Context.Tooltip:Hide(self.Context)
+		self.List.Parent = self:_GetOverlayGui()
+		self.List.Visible = true
 		self.SearchBox.Text = ""
 		self:_FilterOptions("")
 		self:_BeginInteraction()
@@ -5016,6 +5212,11 @@ function Dropdown:SetExpanded(value, instant)
 	self.Arrow.Text = self.Expanded and "^" or "v"
 	self.Scroll.CanvasPosition = Vector2.new(0, 0)
 	self:_ResizeExpanded(instant)
+	if not self.Expanded then
+		self.List.Visible = false
+		self.List.Parent = self.Instance
+		self.List.Position = UDim2.fromOffset(0, self.ListTop)
+	end
 	return self
 end
 
@@ -5131,6 +5332,7 @@ function Dropdown:SetOptions(options, defaultValue)
 		end
 	end
 
+	self.Utility:DisconnectAll(self.OptionConnections)
 	table.clear(self.OptionButtons)
 	self.Options = options
 	if self.SearchAutomatic then
@@ -5178,12 +5380,14 @@ function Dropdown:SetTheme(theme)
 	self.SearchBox.TextColor3 = theme.Text
 	self.SearchBox.PlaceholderColor3 = theme.MutedText
 	self.Scroll.ScrollBarImageColor3 = theme.Accent
+	self.EmptyLabel.TextColor3 = theme.MutedText
 
 	for _, item in ipairs(self.OptionButtons) do
 		item.Button.BackgroundColor3 = theme.Card
 	end
 
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
+	self.Utility:ApplyStrokeTheme(self.List, theme.Stroke)
 	self:SetValue(self.Value, false)
 	self:SetEnabled(self.Enabled)
 	return self
@@ -5194,19 +5398,18 @@ function Dropdown:Destroy()
 		return self
 	end
 
+	self:SetExpanded(false, true)
 	self.Destroyed = true
 	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self:_EndInteraction()
-	if self.Library._expandedDropdown == self then
-		self.Library._expandedDropdown = nil
-	end
 
 	if self.CanvasConnection then
 		self.CanvasConnection:Disconnect()
 		self.CanvasConnection = nil
 	end
 
+	self.Utility:DisconnectAll(self.OptionConnections)
 	self.Utility:DisconnectAll(self.Connections)
 	if self.Instance then
 		self.Instance:Destroy()
@@ -7172,12 +7375,15 @@ local MidasUI = {
 	_windows = {},
 	_flagObjects = {},
 	_dependencies = {},
+	_themeCallbacks = {},
+	_themeCallbackSequence = 0,
 	_debug = false,
 	_warnings = {},
 	_warningCategories = {},
 	_configFolder = "Midas",
 	_configFile = "config.json",
 	_windowSettings = {},
+	_destroyed = false,
 	CommandPaletteKeyCode = Enum.KeyCode.K,
 }
 
@@ -7281,6 +7487,26 @@ function MidasUI:GetDebugState()
 		searchItemCount = searchItemCount + 1
 	end
 
+	local expandedDropdown = self._expandedDropdown
+	local hasExpandedDropdown = expandedDropdown ~= nil
+		and not expandedDropdown.Destroyed
+		and expandedDropdown.Expanded == true
+	local publicAPIs = {}
+	for _, method in ipairs({
+		"RegisterCommand",
+		"UnregisterCommand",
+		"RunCommand",
+		"Search",
+		"SearchCommands",
+		"NavigateTo",
+		"OpenCommandPalette",
+		"CloseCommandPalette",
+		"ToggleCommandPalette",
+		"OnThemeChanged",
+	}) do
+		publicAPIs[method] = typeof(self[method]) == "function"
+	end
+
 	return {
 		Version = self.Version,
 		Theme = self.ThemeName,
@@ -7293,6 +7519,13 @@ function MidasUI:GetDebugState()
 		NotificationCount = self._notifications and #self._notifications or 0,
 		HasActiveDialog = self._activeDialog ~= nil,
 		HasOpenCommandPalette = self._activePalette ~= nil,
+		HasExpandedDropdown = hasExpandedDropdown,
+		ActiveOverlay = self._activeDialog and "Dialog"
+			or (self._activePalette and "CommandPalette")
+			or (hasExpandedDropdown and "Dropdown")
+			or nil,
+		PublicAPIs = publicAPIs,
+		Destroyed = self._destroyed == true,
 		Warnings = table.clone(self._warnings),
 		WarningCategories = table.clone(self._warningCategories),
 	}
@@ -7311,6 +7544,26 @@ end
 
 function MidasUI:GetTemplate(nameOrTemplate)
 	return Templates:Get(nameOrTemplate)
+end
+
+function MidasUI:OnThemeChanged(callback)
+	if typeof(callback) ~= "function" then
+		self:_Warn("Theme", "OnThemeChanged expected a callback function")
+		return nil
+	end
+
+	self._themeCallbackSequence = self._themeCallbackSequence + 1
+	local id = self._themeCallbackSequence
+	self._themeCallbacks[id] = callback
+
+	local controller = {}
+	function controller:Disconnect()
+		if MidasUI._themeCallbacks[id] == callback then
+			MidasUI._themeCallbacks[id] = nil
+		end
+		return self
+	end
+	return controller
 end
 
 function MidasUI:SetTheme(nameOrTheme)
@@ -7335,6 +7588,9 @@ function MidasUI:SetTheme(nameOrTheme)
 	Tooltip:SetTheme(Context)
 	Dialog:SetTheme(Context)
 	CommandPalette:SetTheme(Context)
+	for _, callback in pairs(self._themeCallbacks) do
+		self:_InvokeCallback("Theme", callback, themeName, theme, valid)
+	end
 	return valid, themeName
 end
 
@@ -7345,6 +7601,7 @@ function MidasUI:CreateWindow(options)
 	end
 
 	options = options or {}
+	self._destroyed = false
 	self:SetTheme(options.Theme or self.ThemeName)
 	CommandPalette:Init(Context)
 	local window = Context.Window.new(Context, options)
@@ -7371,8 +7628,7 @@ function MidasUI:UnregisterCommand(idOrController)
 end
 
 function MidasUI:RunCommand(idOrController)
-	local id = typeof(idOrController) == "table" and idOrController.Id or idOrController
-	local ok = Commands:Execute(self, id)
+	local ok = Commands:Execute(self, idOrController)
 	return ok
 end
 
@@ -7411,6 +7667,10 @@ function MidasUI:NavigateTo(object)
 end
 
 function MidasUI:OpenCommandPalette(options)
+	if self._destroyed then
+		self:_Warn("Lifecycle", "OpenCommandPalette ignored: library was destroyed")
+		return false
+	end
 	return CommandPalette:Open(Context, options)
 end
 
@@ -7571,6 +7831,10 @@ function MidasUI:ListConfigs()
 end
 
 function MidasUI:Notify(options)
+	if self._destroyed then
+		self:_Warn("Lifecycle", "Notify ignored: library was destroyed")
+		return nil
+	end
 	if options ~= nil and typeof(options) ~= "table" then
 		self:_Warn("Notification", "Notify expected an options table")
 		options = {}
@@ -7579,12 +7843,17 @@ function MidasUI:Notify(options)
 end
 
 function MidasUI:Dialog(options)
+	if self._destroyed then
+		self:_Warn("Lifecycle", "Dialog ignored: library was destroyed")
+		return nil
+	end
 	if options ~= nil and typeof(options) ~= "table" then
 		self:_Warn("Dialog", "Dialog expected an options table")
 		options = {}
 	end
 	self:CloseCommandPalette()
 	self:_CloseExpandedDropdown()
+	Tooltip:Hide(Context)
 	return Dialog:Show(Context, options or {})
 end
 
@@ -7608,6 +7877,10 @@ end
 
 function MidasUI:_CleanupOverlays()
 	self:_CloseExpandedDropdown()
+	if self._dropdownGui then
+		self._dropdownGui:Destroy()
+		self._dropdownGui = nil
+	end
 	if self._notifyGui then
 		self._notifyGui:Destroy()
 		self._notifyGui = nil
@@ -7652,6 +7925,7 @@ function MidasUI:_CleanupWindowRuntime()
 end
 
 function MidasUI:Destroy()
+	self._destroyed = true
 	for _, window in ipairs(table.clone(self._windows)) do
 		window:Destroy()
 	end
@@ -7662,6 +7936,7 @@ function MidasUI:Destroy()
 	table.clear(self.Keybinds)
 	table.clear(self._commands or {})
 	table.clear(self._searchItems or {})
+	table.clear(self._themeCallbacks)
 
 	if self._listeningKeybind then
 		self._listeningKeybind = nil

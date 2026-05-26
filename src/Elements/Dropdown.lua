@@ -31,6 +31,7 @@ function Dropdown.new(context, section, options)
 		Value = options.Default,
 		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
+		OptionConnections = {},
 		InteractionConnections = {},
 		Expanded = false,
 		Enabled = true,
@@ -122,6 +123,9 @@ function Dropdown.new(context, section, options)
 		Size = UDim2.new(1, 0, 0, 0),
 		BackgroundColor3 = theme.Background,
 		ClipsDescendants = true,
+		Active = true,
+		Visible = false,
+		ZIndex = 21,
 		Parent = frame,
 	})
 	utility:Corner(list, 8)
@@ -142,6 +146,7 @@ function Dropdown.new(context, section, options)
 		TextSize = compact and 12 or 13,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Visible = self.SearchEnabled,
+		ZIndex = 22,
 		Parent = list,
 	})
 	utility:Corner(searchBox, 6)
@@ -160,9 +165,22 @@ function Dropdown.new(context, section, options)
 		ScrollBarThickness = 3,
 		ScrollBarImageColor3 = theme.Accent,
 		ScrollBarImageTransparency = 0.3,
+		ZIndex = 22,
 		Parent = list,
 	})
 	local optionLayout = utility:List(scroll, 4)
+	local emptyLabel = utility:Create("TextLabel", {
+		Name = "Empty",
+		Size = UDim2.new(1, 0, 0, self.OptionHeight),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = "No options found",
+		TextColor3 = theme.MutedText,
+		TextSize = compact and 12 or 13,
+		Visible = false,
+		ZIndex = 23,
+		Parent = scroll,
+	})
 
 	self.Instance = frame
 	self.Label = label
@@ -173,6 +191,7 @@ function Dropdown.new(context, section, options)
 	self.SearchBox = searchBox
 	self.Scroll = scroll
 	self.OptionLayout = optionLayout
+	self.EmptyLabel = emptyLabel
 	self.CanvasConnection = utility:BindCanvas(scroll, optionLayout, 4)
 	self.OptionButtons = {}
 
@@ -192,6 +211,27 @@ function Dropdown.new(context, section, options)
 		self:SetExpanded(not self.Expanded)
 	end)
 
+	utility:Connect(self.Connections, button:GetPropertyChangedSignal("AbsolutePosition"), function()
+		if self.Expanded then
+			self:_PositionOverlay()
+		end
+	end)
+
+	utility:Connect(self.Connections, button:GetPropertyChangedSignal("AbsoluteSize"), function()
+		if self.Expanded then
+			self:_ResizeExpanded(true)
+		end
+	end)
+
+	local camera = workspace.CurrentCamera
+	if camera then
+		utility:Connect(self.Connections, camera:GetPropertyChangedSignal("ViewportSize"), function()
+			if self.Expanded then
+				self:_PositionOverlay()
+			end
+		end)
+	end
+
 	context.Flags:Register(self.Library, self.Flag, self)
 	self:SetValue(self.Value, false)
 	self:SetExpanded(false, true)
@@ -200,20 +240,70 @@ function Dropdown.new(context, section, options)
 	return self
 end
 
+function Dropdown:_GetOverlayGui()
+	local gui = self.Library._dropdownGui
+	if gui and gui.Parent then
+		return gui
+	end
+
+	gui = self.Utility:Create("ScreenGui", {
+		Name = "MidasUI_Dropdowns",
+		IgnoreGuiInset = true,
+		ResetOnSpawn = false,
+		DisplayOrder = 250,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = self.Utility:GetGuiParent(),
+	})
+	self.Library._dropdownGui = gui
+	return gui
+end
+
+function Dropdown:_PositionOverlay()
+	if not self.Expanded or not self.List or not self.List.Parent then
+		return
+	end
+
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+	local width = math.max(self.Button.AbsoluteSize.X, 1)
+	local height = self.List.Size.Y.Offset
+	local margin = 8
+	local x = math.clamp(self.Button.AbsolutePosition.X, margin, math.max(margin, viewport.X - width - margin))
+	local below = self.Button.AbsolutePosition.Y + self.Button.AbsoluteSize.Y + 6
+	local above = self.Button.AbsolutePosition.Y - height - 6
+	local maximumY = math.max(margin, viewport.Y - height - margin)
+	local y = below
+
+	if below + height > viewport.Y - margin and above >= margin then
+		y = above
+	else
+		y = math.clamp(below, margin, maximumY)
+	end
+
+	self.List.Position = UDim2.fromOffset(x, y)
+end
+
 function Dropdown:_ResizeExpanded(instant)
 	local maxVisible = math.max(self.MaxVisibleOptions, 1)
-	local optionHeight = math.min(#self.FilteredOptions, maxVisible) * self.OptionStep
+	local displayedOptions = math.max(#self.FilteredOptions, 1)
+	local optionHeight = math.min(displayedOptions, maxVisible) * self.OptionStep
 	local searchHeight = self.SearchEnabled and (self.SearchHeight + 8) or 0
 	local height = self.Expanded and optionHeight + searchHeight + 8 or 0
-	local frameHeight = self.Expanded and (self.ListTop + height) or self.BaseHeight
+	local width = math.max(self.Button.AbsoluteSize.X, self.Instance.AbsoluteSize.X, 1)
+	local targetSize = UDim2.fromOffset(width, height)
+
+	self.Instance.Size = UDim2.new(1, 0, 0, self.BaseHeight)
 
 	if instant then
-		self.List.Size = UDim2.new(1, 0, 0, height)
-		self.Instance.Size = UDim2.new(1, 0, 0, frameHeight)
+		self.List.Size = targetSize
 	else
 		local style = self.Expanded and Enum.EasingStyle.Back or Enum.EasingStyle.Quad
-		self.Utility:Tween(self.List, self.Utility.Motion.Standard, { Size = UDim2.new(1, 0, 0, height) }, style)
-		self.Utility:Tween(self.Instance, self.Utility.Motion.Standard, { Size = UDim2.new(1, 0, 0, frameHeight) }, style)
+		self.List.Size = UDim2.fromOffset(width, self.List.Size.Y.Offset)
+		self.Utility:Tween(self.List, self.Utility.Motion.Standard, { Size = targetSize }, style)
+	end
+
+	if self.Expanded then
+		self:_PositionOverlay()
 	end
 end
 
@@ -246,7 +336,15 @@ function Dropdown:_FilterOptions(query)
 			table.insert(self.FilteredOptions, item)
 		end
 	end
-	self:_SetKeyboardSelection(1)
+	self.EmptyLabel.Visible = #self.FilteredOptions == 0
+	local selectedIndex = 1
+	for index, item in ipairs(self.FilteredOptions) do
+		if item.Value == self.Value then
+			selectedIndex = index
+			break
+		end
+	end
+	self:_SetKeyboardSelection(selectedIndex)
 	if self.Expanded then
 		self:_ResizeExpanded(true)
 	end
@@ -254,10 +352,27 @@ end
 
 function Dropdown:_EndInteraction()
 	self.Utility:DisconnectAll(self.InteractionConnections)
+	if self.DismissOverlay then
+		self.DismissOverlay:Destroy()
+		self.DismissOverlay = nil
+	end
 end
 
 function Dropdown:_BeginInteraction()
 	self:_EndInteraction()
+	self.DismissOverlay = self.Utility:Create("TextButton", {
+		Name = "Dismiss",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Text = "",
+		AutoButtonColor = false,
+		ZIndex = 20,
+		Parent = self:_GetOverlayGui(),
+	})
+	self.Utility:Connect(self.InteractionConnections, self.DismissOverlay.MouseButton1Click, function()
+		self:SetExpanded(false)
+	end)
+
 	self.Utility:Connect(self.InteractionConnections, game:GetService("UserInputService").InputBegan, function(input)
 		if not self.Expanded or input.UserInputType ~= Enum.UserInputType.Keyboard then
 			return
@@ -299,28 +414,34 @@ function Dropdown:_addOption(option)
 		TextSize = self.Section.Compact and 12 or 13,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		AutoButtonColor = false,
+		ZIndex = 23,
 		Parent = self.Scroll,
 	})
 	utility:Corner(button, 6)
 
-	self.Utility:Connect(self.Connections, button.MouseEnter, function()
+	local item = { Button = button, Value = option }
+	table.insert(self.OptionButtons, item)
+
+	self.Utility:Connect(self.OptionConnections, button.MouseEnter, function()
 		if self.Enabled == false then
 			return
 		end
 
-		self.Utility:Tween(button, 0.12, { BackgroundTransparency = 0.25 })
+		local index = table.find(self.FilteredOptions, item)
+		if index then
+			self:_SetKeyboardSelection(index)
+		end
 	end)
 
-	self.Utility:Connect(self.Connections, button.MouseLeave, function()
+	self.Utility:Connect(self.OptionConnections, button.MouseLeave, function()
 		if self.Enabled == false then
 			return
 		end
 
-		local active = self.Value == option
-		self.Utility:Tween(button, 0.12, { BackgroundTransparency = active and 0 or 1 })
+		self:_SetKeyboardSelection(self.SelectedIndex)
 	end)
 
-	utility:Connect(self.Connections, button.MouseButton1Click, function()
+	utility:Connect(self.OptionConnections, button.MouseButton1Click, function()
 		if self.Enabled == false then
 			return
 		end
@@ -332,8 +453,6 @@ function Dropdown:_addOption(option)
 		end
 		self:SetExpanded(false)
 	end)
-
-	table.insert(self.OptionButtons, { Button = button, Value = option })
 end
 
 function Dropdown:GetValue()
@@ -352,6 +471,9 @@ function Dropdown:SetExpanded(value, instant)
 	self.Expanded = expanded
 	if self.Expanded then
 		self.Library._expandedDropdown = self
+		self.Context.Tooltip:Hide(self.Context)
+		self.List.Parent = self:_GetOverlayGui()
+		self.List.Visible = true
 		self.SearchBox.Text = ""
 		self:_FilterOptions("")
 		self:_BeginInteraction()
@@ -377,6 +499,11 @@ function Dropdown:SetExpanded(value, instant)
 	self.Arrow.Text = self.Expanded and "^" or "v"
 	self.Scroll.CanvasPosition = Vector2.new(0, 0)
 	self:_ResizeExpanded(instant)
+	if not self.Expanded then
+		self.List.Visible = false
+		self.List.Parent = self.Instance
+		self.List.Position = UDim2.fromOffset(0, self.ListTop)
+	end
 	return self
 end
 
@@ -492,6 +619,7 @@ function Dropdown:SetOptions(options, defaultValue)
 		end
 	end
 
+	self.Utility:DisconnectAll(self.OptionConnections)
 	table.clear(self.OptionButtons)
 	self.Options = options
 	if self.SearchAutomatic then
@@ -539,12 +667,14 @@ function Dropdown:SetTheme(theme)
 	self.SearchBox.TextColor3 = theme.Text
 	self.SearchBox.PlaceholderColor3 = theme.MutedText
 	self.Scroll.ScrollBarImageColor3 = theme.Accent
+	self.EmptyLabel.TextColor3 = theme.MutedText
 
 	for _, item in ipairs(self.OptionButtons) do
 		item.Button.BackgroundColor3 = theme.Card
 	end
 
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
+	self.Utility:ApplyStrokeTheme(self.List, theme.Stroke)
 	self:SetValue(self.Value, false)
 	self:SetEnabled(self.Enabled)
 	return self
@@ -555,19 +685,18 @@ function Dropdown:Destroy()
 		return self
 	end
 
+	self:SetExpanded(false, true)
 	self.Destroyed = true
 	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self:_EndInteraction()
-	if self.Library._expandedDropdown == self then
-		self.Library._expandedDropdown = nil
-	end
 
 	if self.CanvasConnection then
 		self.CanvasConnection:Disconnect()
 		self.CanvasConnection = nil
 	end
 
+	self.Utility:DisconnectAll(self.OptionConnections)
 	self.Utility:DisconnectAll(self.Connections)
 	if self.Instance then
 		self.Instance:Destroy()

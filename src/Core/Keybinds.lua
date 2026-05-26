@@ -10,8 +10,13 @@ function Keybinds:Init(library)
 	library._keybindsReady = true
 	library._keybindConnections = library._keybindConnections or {}
 
-	table.insert(library._keybindConnections, UserInputService.InputBegan:Connect(function(input)
+	table.insert(library._keybindConnections, UserInputService.InputBegan:Connect(function(input, processed)
 		if input.UserInputType ~= Enum.UserInputType.Keyboard then
+			return
+		end
+
+		if library._activeDialog or library._activePalette
+			or (library._expandedDropdown and library._expandedDropdown.Expanded) then
 			return
 		end
 
@@ -25,7 +30,7 @@ function Keybinds:Init(library)
 			return
 		end
 
-		if UserInputService:GetFocusedTextBox() then
+		if processed or UserInputService:GetFocusedTextBox() then
 			return
 		end
 

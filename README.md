@@ -73,6 +73,8 @@ Window:RegisterCommand({
 
 The shorter runnable beginner sample is [src/Example.lua](src/Example.lua). The full runtime test surface is [src/Showcase.lua](src/Showcase.lua).
 
+For repeated V1.8 runtime QA, run the current Showcase script: it destroys its preceding stored showcase instance and loads the raw dist URL with a cache-busting query. Its diagnostics section also provides an explicit full cleanup action before a fresh test.
+
 ## Documentation
 
 - [Documentation index](docs/README.md)
@@ -90,5 +92,6 @@ The shorter runnable beginner sample is [src/Example.lua](src/Example.lua). The 
 - Config storage requires compatible `writefile`, `readfile`, and `isfile` runtime APIs; these are not Roblox Studio standard APIs.
 - An anonymous theme supplied directly to `SetTheme({ ... })` is normalized at runtime but cannot be restored by name from a config. Register it first when persistence is needed.
 - Keybind elements use their `Flag` as their registry identity; assign a unique flag to each independently triggered keybind.
+- A UI started by an older script that did not store its library handle cannot be automatically identified by a newer Showcase run; destroy the old handle or start a clean runtime session when diagnosing duplicates.
 - Indexed search navigates to controls; it never toggles or invokes a control unless the author registers an explicit command callback.
 - QA is primarily manual in a Roblox runtime; static parser checks do not replace in-game interaction testing.

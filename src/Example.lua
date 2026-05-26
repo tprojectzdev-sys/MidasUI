@@ -29,7 +29,7 @@ General:CreateSlider({
 	Min = 0,
 	Max = 100,
 	Default = 35,
-	Increment = 5,
+	Increment = 1,
 })
 
 General:CreateButton({

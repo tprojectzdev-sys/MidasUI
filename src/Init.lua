@@ -31,12 +31,15 @@ local MidasUI = {
 	_windows = {},
 	_flagObjects = {},
 	_dependencies = {},
+	_themeCallbacks = {},
+	_themeCallbackSequence = 0,
 	_debug = false,
 	_warnings = {},
 	_warningCategories = {},
 	_configFolder = "Midas",
 	_configFile = "config.json",
 	_windowSettings = {},
+	_destroyed = false,
 	CommandPaletteKeyCode = Enum.KeyCode.K,
 }
 
@@ -140,6 +143,26 @@ function MidasUI:GetDebugState()
 		searchItemCount = searchItemCount + 1
 	end
 
+	local expandedDropdown = self._expandedDropdown
+	local hasExpandedDropdown = expandedDropdown ~= nil
+		and not expandedDropdown.Destroyed
+		and expandedDropdown.Expanded == true
+	local publicAPIs = {}
+	for _, method in ipairs({
+		"RegisterCommand",
+		"UnregisterCommand",
+		"RunCommand",
+		"Search",
+		"SearchCommands",
+		"NavigateTo",
+		"OpenCommandPalette",
+		"CloseCommandPalette",
+		"ToggleCommandPalette",
+		"OnThemeChanged",
+	}) do
+		publicAPIs[method] = typeof(self[method]) == "function"
+	end
+
 	return {
 		Version = self.Version,
 		Theme = self.ThemeName,
@@ -152,6 +175,13 @@ function MidasUI:GetDebugState()
 		NotificationCount = self._notifications and #self._notifications or 0,
 		HasActiveDialog = self._activeDialog ~= nil,
 		HasOpenCommandPalette = self._activePalette ~= nil,
+		HasExpandedDropdown = hasExpandedDropdown,
+		ActiveOverlay = self._activeDialog and "Dialog"
+			or (self._activePalette and "CommandPalette")
+			or (hasExpandedDropdown and "Dropdown")
+			or nil,
+		PublicAPIs = publicAPIs,
+		Destroyed = self._destroyed == true,
 		Warnings = table.clone(self._warnings),
 		WarningCategories = table.clone(self._warningCategories),
 	}
@@ -170,6 +200,26 @@ end
 
 function MidasUI:GetTemplate(nameOrTemplate)
 	return Templates:Get(nameOrTemplate)
+end
+
+function MidasUI:OnThemeChanged(callback)
+	if typeof(callback) ~= "function" then
+		self:_Warn("Theme", "OnThemeChanged expected a callback function")
+		return nil
+	end
+
+	self._themeCallbackSequence = self._themeCallbackSequence + 1
+	local id = self._themeCallbackSequence
+	self._themeCallbacks[id] = callback
+
+	local controller = {}
+	function controller:Disconnect()
+		if MidasUI._themeCallbacks[id] == callback then
+			MidasUI._themeCallbacks[id] = nil
+		end
+		return self
+	end
+	return controller
 end
 
 function MidasUI:SetTheme(nameOrTheme)
@@ -194,6 +244,9 @@ function MidasUI:SetTheme(nameOrTheme)
 	Tooltip:SetTheme(Context)
 	Dialog:SetTheme(Context)
 	CommandPalette:SetTheme(Context)
+	for _, callback in pairs(self._themeCallbacks) do
+		self:_InvokeCallback("Theme", callback, themeName, theme, valid)
+	end
 	return valid, themeName
 end
 
@@ -204,6 +257,7 @@ function MidasUI:CreateWindow(options)
 	end
 
 	options = options or {}
+	self._destroyed = false
 	self:SetTheme(options.Theme or self.ThemeName)
 	CommandPalette:Init(Context)
 	local window = Context.Window.new(Context, options)
@@ -230,8 +284,7 @@ function MidasUI:UnregisterCommand(idOrController)
 end
 
 function MidasUI:RunCommand(idOrController)
-	local id = typeof(idOrController) == "table" and idOrController.Id or idOrController
-	local ok = Commands:Execute(self, id)
+	local ok = Commands:Execute(self, idOrController)
 	return ok
 end
 
@@ -270,6 +323,10 @@ function MidasUI:NavigateTo(object)
 end
 
 function MidasUI:OpenCommandPalette(options)
+	if self._destroyed then
+		self:_Warn("Lifecycle", "OpenCommandPalette ignored: library was destroyed")
+		return false
+	end
 	return CommandPalette:Open(Context, options)
 end
 
@@ -430,6 +487,10 @@ function MidasUI:ListConfigs()
 end
 
 function MidasUI:Notify(options)
+	if self._destroyed then
+		self:_Warn("Lifecycle", "Notify ignored: library was destroyed")
+		return nil
+	end
 	if options ~= nil and typeof(options) ~= "table" then
 		self:_Warn("Notification", "Notify expected an options table")
 		options = {}
@@ -438,12 +499,17 @@ function MidasUI:Notify(options)
 end
 
 function MidasUI:Dialog(options)
+	if self._destroyed then
+		self:_Warn("Lifecycle", "Dialog ignored: library was destroyed")
+		return nil
+	end
 	if options ~= nil and typeof(options) ~= "table" then
 		self:_Warn("Dialog", "Dialog expected an options table")
 		options = {}
 	end
 	self:CloseCommandPalette()
 	self:_CloseExpandedDropdown()
+	Tooltip:Hide(Context)
 	return Dialog:Show(Context, options or {})
 end
 
@@ -467,6 +533,10 @@ end
 
 function MidasUI:_CleanupOverlays()
 	self:_CloseExpandedDropdown()
+	if self._dropdownGui then
+		self._dropdownGui:Destroy()
+		self._dropdownGui = nil
+	end
 	if self._notifyGui then
 		self._notifyGui:Destroy()
 		self._notifyGui = nil
@@ -511,6 +581,7 @@ function MidasUI:_CleanupWindowRuntime()
 end
 
 function MidasUI:Destroy()
+	self._destroyed = true
 	for _, window in ipairs(table.clone(self._windows)) do
 		window:Destroy()
 	end
@@ -521,6 +592,7 @@ function MidasUI:Destroy()
 	table.clear(self.Keybinds)
 	table.clear(self._commands or {})
 	table.clear(self._searchItems or {})
+	table.clear(self._themeCallbacks)
 
 	if self._listeningKeybind then
 		self._listeningKeybind = nil

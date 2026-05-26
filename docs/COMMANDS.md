@@ -64,7 +64,7 @@ Hidden dependency controls are excluded while unavailable and become discoverabl
 | `Enter` | Run the selected command/result or confirm a dialog |
 | `Escape` | Close the active palette, expanded dropdown, or dialog |
 
-Dialogs have modal priority: showing a dialog closes the palette and places the dialog above all windows. Existing keybind elements do not receive the palette hotkey.
+Dialogs have modal priority: showing a dialog closes the palette and places the dialog above all windows. Existing registered keybind actions do not receive the palette hotkey, and normal keybind dispatch pauses while a palette, dialog, focused text box, or expanded dropdown owns keyboard input.
 
 ## Searchable Dropdowns
 
@@ -80,7 +80,7 @@ Section:CreateDropdown({
 })
 ```
 
-`Searchable = false` suppresses automatic filtering. `SearchThreshold = 12` changes the automatic threshold. Filtering is presentation-only: selecting a visible result still follows normal flag/controller/config behavior, and filter state resets on close.
+`Searchable = false` suppresses automatic filtering. `SearchThreshold = 12` changes the automatic threshold. Filtering is presentation-only: selecting a visible result still follows normal flag/controller/config behavior, no-result filtering is shown explicitly, and filter state resets on close. Expanded dropdowns render in a viewport-aware layer rather than stretching or clipping their section; clicking outside dismisses the layer.
 
 ## Workflow Patterns
 
@@ -90,4 +90,4 @@ For `PowerPanel`, register commands that reveal compact groups, expand a long op
 
 ## Diagnostics
 
-With `MidasUI:SetDebug(true)`, `MidasUI:GetDebugState()` exposes `CommandCount`, `SearchItemCount`, and `HasOpenCommandPalette` in addition to existing runtime state.
+With `MidasUI:SetDebug(true)`, `MidasUI:GetDebugState()` exposes `CommandCount`, `SearchItemCount`, `KeybindCount`, `WindowCount`, `HasOpenCommandPalette`, `HasExpandedDropdown`, `ActiveOverlay`, and a `PublicAPIs` command-method availability table. Debug remains off by default.

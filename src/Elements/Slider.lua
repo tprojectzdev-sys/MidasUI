@@ -349,7 +349,7 @@ function Slider:SetRange(min, max, increment)
 
 	self.Min = min
 	self.Max = max
-	self.Increment = math.max(math.abs(tonumber(increment) or self.Increment), 0.0001)
+	self.Increment = math.max(math.abs(tonumber(increment) or self.Increment), 0.000001)
 	self.Precision = math.max(decimalPlaces(self.Min), decimalPlaces(self.Max), decimalPlaces(self.Increment))
 	self:SetValue(self.Value, false)
 	return self

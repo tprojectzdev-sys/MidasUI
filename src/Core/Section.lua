@@ -197,6 +197,11 @@ function Section:Hide()
 		return self
 	end
 
+	local dropdown = self.Library._expandedDropdown
+	if dropdown and dropdown.Section == self then
+		dropdown:SetExpanded(false, true)
+	end
+
 	if self.Frame then
 		self.Frame.Visible = false
 	end

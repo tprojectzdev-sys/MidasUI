@@ -16,9 +16,20 @@ Theme: command discovery, navigation speed, and keyboard-first large-interface w
 ### Improved
 
 - Dialogs handle `Enter` confirmation and `Escape` cancellation/close while remaining above the palette.
-- Existing keybind dispatch ignores the command-palette chord and remains suppressed during text entry.
+- Existing keybind dispatch ignores the command-palette chord and remains suppressed during text entry, palette/dialog interaction, and expanded-dropdown keyboard selection.
 - Dashboard and power-panel showcase windows demonstrate scoped generic workflow commands and searchable dense settings.
 - Overlay cleanup closes palette/dropdown state during modal, hide, minimize, and destruction flows.
+- Palette and searchable-dropdown rows provide clearer selection/no-result feedback and clean transient row listeners during refresh.
+- Expanded dropdowns now use a viewport-aware overlay with outside-click dismissal, avoiding section reflow and clipping while retaining the existing dropdown/controller API.
+- `OnThemeChanged(callback)` provides a small protected, disconnectable observer for application-owned theme-following visuals.
+- The Showcase performs cache-busted bundle loading, previous-runtime teardown, and explicit cleanup/debug checks for repeated-session QA.
+
+### Fixed
+
+- Normal Showcase sliders now use one-unit increments; the only five-unit slider is explicitly labeled as a coarse-step test.
+- Destroyed library instances no longer recreate transient overlays from delayed callbacks before explicit reuse.
+- Stale command controllers cannot unregister or execute a later command reusing the same ID.
+- Tooltips no longer remain visible beneath an active dropdown, palette, or dialog during overlay transitions.
 
 ### Compatibility
 

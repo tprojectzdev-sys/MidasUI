@@ -1,10 +1,19 @@
 # V1.8 Showcase And Manual QA
 
-[src/Showcase.lua](../src/Showcase.lua) is the V1.8 interactive runtime QA surface. Replace `URL_HERE` with the raw URL for [dist/MidasUI.lua](../dist/MidasUI.lua), run it in the target runtime, and keep the F9 console visible. Debug mode is intentionally enabled so deliberate bad-input tests are visible.
+[src/Showcase.lua](../src/Showcase.lua) is the V1.8 interactive runtime QA surface. It loads the raw [dist/MidasUI.lua](../dist/MidasUI.lua) URL with a per-run cache-busting query and keeps the F9 console visible through opt-in debug output.
+
+## Clean Runtime Flow
+
+1. Run the current `Showcase.lua`; it stores its MidasUI instance in the shared runtime environment.
+2. Re-run the same script to test reload behavior. It calls `Destroy()` on the preceding stored showcase instance before fetching the cache-busted bundle.
+3. Confirm `WindowCount`, `KeybindCount`, and `CommandCount` describe only the current test UI by using `Print Debug State`.
+4. Use `Runtime: Destroy Showcase` from the palette or `Destroy Showcase Runtime` in diagnostics for explicit cleanup before stopping testing.
+
+An older showcase script already open before this cleanup behavior cannot be discovered reliably by a newly loaded library. Destroy that retained library instance when available, or start a clean runtime session before investigating duplicate UI/keybind behavior.
 
 ## Checklist
 
-- Load `dist/MidasUI.lua` through its raw URL and verify it returns `MidasUI` and creates the window.
+- Load `dist/MidasUI.lua` through the cache-busted raw URL and verify it returns `MidasUI` Version `1.8.0` and creates one window.
 - On first open, inspect the short dropping crown/reveal intro; confirm it completes cleanly and the compact crown topbar crest remains crisp.
 - In a minimal follow-up window, set `Intro = false` or `Animations = false` and verify immediate, usable creation without the reveal.
 - Check the F9 console: startup should not emit failures; debug warnings should occur only when triggering deliberate invalid-value tests.
@@ -13,7 +22,7 @@
 - In the `Discovery` tab, run open/toggle/query actions; search for `slider`, `dropdown`, `dialogs`, and `theme`, then use `Up`, `Down`, and `Enter`.
 - Run `Palette: Keep Open Notification`; verify `CloseOnRun = false` leaves the palette active until explicitly closed.
 - Select an indexed tab, section, and element result; verify it navigates/scrolls without invoking a button or toggling a flag.
-- Print both search result tests and debug state; verify command and indexed-item counts appear.
+- Print both search result tests and debug state; verify command/index counts, overlay state, and command API booleans appear.
 - From `V1.8 Searchable Workflow Templates`, open the `FarmingDashboard` demo and inspect StatusCard, ProgressBar, LogPanel, Callout, and ActionRow.
 - In the dashboard, run Start, Pause, the controller update, and Stop flows; verify progress flag updates, semantic line/callout colors, capped logs, and danger confirmation styling.
 - With the dashboard open, use commands `Dashboard: Start`, `Pause`, `Clear`, `Jump`, and `Reset`; close/destroy it and verify those commands disappear.
@@ -21,15 +30,17 @@
 - Use the `Power Panel:` commands to jump to grouped settings, explicitly toggle the sample flag, and open its searchable mode dropdown.
 - Drag `Precision Slider (0.01)` slowly across negative and positive values; verify two-decimal text, smooth fill/knob movement, correct endpoints, and no stuck drag.
 - Exercise controller updates: text update, both slider updates, dropdown option replacement, toggle update, `Disable`/`Enable`/`Refresh`, `Hide`/`Show`, and destroyed-controller calls.
-- Use `SetFlag` actions for coarse and precision sliders and confirm displayed/filled values agree immediately.
+- Drag `Controlled Slider`; verify normal values move one unit at a time. `Coarse Step Slider (5)` is the intentional five-unit comparison case.
+- Use `SetFlag` actions and config loading for normal and precision sliders; confirm snapped displayed/filled values agree immediately.
 - Save and load named config profiles; run the default profile round trip; where possible test a missing and corrupt profile file.
 - Confirm slider out-of-range saved values clamp, invalid dropdown values do not replace the displayed option, and invalid keybind values do not clear a valid binding.
-- Rebind and trigger Toggle keybind mode once per press.
+- Rebind and trigger Toggle keybind mode once per physical press, then re-run Showcase and repeat to check listener cleanup.
 - Trigger Hold keybind mode and confirm `true` on press and `false` on release; disable or destroy during hold where practical.
 - Focus the typing input and verify keybind callbacks do not fire while typing.
 - Keep the typing input focused and press `Ctrl+K`; verify ordinary input focus blocks palette activation.
 - Toggle the master dependency and inspect both hidden/restored and enabled/disabled dependent controls.
 - Switch through built-in, full custom, and partial custom themes while a dropdown, notification, tooltip, dialog, and topbar crest are visible; compare contrast and gold treatment.
+- After publishing the regenerated dist, check the console theme callback line after each theme action; it should report one applied theme event per change.
 - Repeat theme switching while the dashboard and power panel windows are open; new components must update their surface and semantic colors.
 - Run `Theme Switch With Palette Open`; verify the open palette recolors without visual residue.
 - Trigger an invalid theme and confirm safe fallback plus one debug-only categorized warning.
@@ -41,7 +52,7 @@
 - Run `Palette Then Dialog Layer Test`; verify the dialog closes/replaces palette interaction and remains topmost.
 - Open Info, Confirm, and Input dialogs separately; verify actions close the overlay and callbacks do not leave the UI unusable.
 - Press `Enter` and `Escape` in dialogs and verify confirm/cancel behavior; type in the prompt before confirming.
-- Open `Long Dropdown`; type to filter, use arrows and `Enter`, verify the selected flag remains valid, then reopen and confirm the filter reset.
+- Open `Long Dropdown`; confirm it overlays without pushing section content, type to filter, check the explicit no-match message, use arrows and `Enter`, click outside to dismiss, verify the selected flag remains valid, then reopen and confirm the filter reset.
 - Trigger the dashboard Stop action and verify its danger confirm remains above every open window after minimize/restore or hide/show.
 - Hover tooltip-bearing elements, then hide/destroy the related item or close the window and verify the tooltip disappears.
 - Close/destroy the window and verify no dialog/tooltip overlay remains; reopen or execute the bundle repeatedly where the runtime permits.

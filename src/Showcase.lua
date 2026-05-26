@@ -1,13 +1,47 @@
-local MidasUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/tprojectzdev-sys/MidasUI/refs/heads/master/dist/MidasUI.lua"))()
+local runtime = type(getgenv) == "function" and getgenv() or _G
+local previousShowcase = runtime.__MidasUIShowcaseRuntime
+if previousShowcase and type(previousShowcase.Destroy) == "function" then
+	pcall(function()
+		previousShowcase:Destroy()
+	end)
+end
+
+local distUrl = "https://raw.githubusercontent.com/tprojectzdev-sys/MidasUI/refs/heads/master/dist/MidasUI.lua"
+local cacheBust = tostring(os.time()) .. "-" .. tostring(math.floor(os.clock() * 1000000))
+local MidasUI = loadstring(game:HttpGet(distUrl .. "?midas_qa=" .. cacheBust))()
+runtime.__MidasUIShowcaseRuntime = MidasUI
+
+local function destroyShowcase()
+	if runtime.__MidasUIShowcaseRuntime == MidasUI then
+		runtime.__MidasUIShowcaseRuntime = nil
+	end
+	MidasUI:Destroy()
+end
 
 print("MidasUI:", MidasUI)
 print("Version:", MidasUI.Version)
-print("CreateWindow:", MidasUI.CreateWindow)
-print("RegisterCommand:", MidasUI.RegisterCommand)
-print("OpenCommandPalette:", MidasUI.OpenCommandPalette)
-print("Search:", MidasUI.Search)
+for _, method in ipairs({
+	"CreateWindow",
+	"RegisterCommand",
+	"UnregisterCommand",
+	"RunCommand",
+	"Search",
+	"SearchCommands",
+	"NavigateTo",
+	"OpenCommandPalette",
+	"CloseCommandPalette",
+	"ToggleCommandPalette",
+	"OnThemeChanged",
+}) do
+	print(method .. ":", typeof(MidasUI[method]) == "function")
+end
 
 MidasUI:SetDebug(true)
+if typeof(MidasUI.OnThemeChanged) == "function" then
+	MidasUI:OnThemeChanged(function(name, _, valid)
+		print("Theme callback:", name, valid)
+	end)
+end
 
 MidasUI:RegisterTheme("ObsidianGold", {
 	Background = Color3.fromRGB(8, 8, 10),
@@ -266,8 +300,8 @@ local ControlledSlider = Controllers:CreateSlider({
 	Min = 0,
 	Max = 100,
 	Default = 45,
-	Increment = 5,
-	Tooltip = "Updated through SetFlag and the controller API.",
+	Increment = 1,
+	Tooltip = "Normal QA slider: verifies one-unit drag, SetFlag, and controller updates.",
 })
 
 local PrecisionSlider = Controllers:CreateSlider({
@@ -692,9 +726,23 @@ Profiles:CreateButton({
 	Callback = function()
 		local state = MidasUI:GetDebugState()
 		if state then
-			print("MidasUI Debug:", state.Version, state.Theme, state.WindowCount, state.FlagCount, state.KeybindCount, state.CommandCount, state.SearchItemCount, state.HasOpenCommandPalette)
+			print("MidasUI Debug:", state.Version, state.Theme, state.WindowCount, state.FlagCount, state.KeybindCount, state.CommandCount, state.SearchItemCount, state.HasOpenCommandPalette, state.HasExpandedDropdown, state.ActiveOverlay)
+			local publicAPIs = state.PublicAPIs or {}
+			local function hasAPI(name)
+				if publicAPIs[name] ~= nil then
+					return publicAPIs[name]
+				end
+				return typeof(MidasUI[name]) == "function"
+			end
+			print("V1.8 API:", hasAPI("RegisterCommand"), hasAPI("UnregisterCommand"), hasAPI("RunCommand"), hasAPI("Search"), hasAPI("SearchCommands"), hasAPI("NavigateTo"), hasAPI("OpenCommandPalette"), hasAPI("CloseCommandPalette"), hasAPI("ToggleCommandPalette"), hasAPI("OnThemeChanged"))
 		end
 	end,
+})
+
+Profiles:CreateButton({
+	Name = "Destroy Showcase Runtime",
+	Tooltip = "Removes all showcase windows, overlays, commands, and global listeners before a fresh run.",
+	Callback = destroyShowcase,
 })
 
 Profiles:CreateButton({
@@ -745,12 +793,12 @@ Stress:CreateDropdown({
 
 for index = 1, 10 do
 	Stress:CreateSlider({
-		Name = "Stress Slider " .. index,
+		Name = index == 1 and "Coarse Step Slider (5)" or ("Stress Slider " .. index),
 		Flag = "stress_slider_" .. index,
 		Min = 0,
 		Max = 100,
 		Default = index * 5,
-		Increment = 5,
+		Increment = index == 1 and 5 or 1,
 	})
 end
 
@@ -870,6 +918,14 @@ Window:RegisterCommand({
 	Keywords = { "dense", "advanced", "dropdown" },
 	Callback = openPowerPanel,
 })
+Window:RegisterCommand({
+	Id = "runtime_destroy",
+	Title = "Runtime: Destroy Showcase",
+	Description = "Release all V1.8 QA windows, commands, overlays, and listeners.",
+	Category = "QA",
+	Keywords = { "cleanup", "reload", "duplicate keybind" },
+	Callback = destroyShowcase,
+})
 
 Keybinds:CreateKeybind({
 	Name = "Hold Key",
@@ -882,6 +938,9 @@ Keybinds:CreateKeybind({
 })
 
 task.delay(0.75, function()
+	if runtime.__MidasUIShowcaseRuntime ~= MidasUI then
+		return
+	end
 	MidasUI:Notify({
 		Title = "MidasUI V1.8",
 		Content = "Press Ctrl+K to discover commands, controls, and workflow windows.",

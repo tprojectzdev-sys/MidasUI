@@ -85,9 +85,15 @@ function Tooltip:Show(context, text)
 		return
 	end
 
+	local library = context.Library
+	if library._activeDialog or library._activePalette
+		or (library._expandedDropdown and library._expandedDropdown.Expanded) then
+		self:Hide(context)
+		return
+	end
+
 	self:Init(context)
 
-	local library = context.Library
 	local frame = library._tooltipFrame
 	local label = library._tooltipLabel
 

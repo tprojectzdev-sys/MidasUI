@@ -482,6 +482,9 @@ function Window:SelectTab(tab)
 		return self
 	end
 
+	if self.ActiveTab ~= tab then
+		self.Library:_CloseExpandedDropdown()
+	end
 	self.ActiveTab = tab
 
 	for _, item in ipairs(self.Tabs) do

@@ -149,7 +149,12 @@ function Commands:Register(library, options)
 		library._commandSequence = library._commandSequence + 1
 		id = "command_" .. library._commandSequence
 	end
-	if library._commands[id] then
+	local existing = library._commands[id]
+	if existing and existing.Owner and (existing.Owner.Destroyed or existing.Owner.Closed) then
+		library._commands[id] = nil
+		existing = nil
+	end
+	if existing then
 		library:_Warn("Command", "RegisterCommand ignored duplicate Id '" .. id .. "'")
 		return nil
 	end
@@ -181,12 +186,12 @@ function Commands:Register(library, options)
 	}
 
 	function controller:Unregister()
-		library:UnregisterCommand(id)
+		library:UnregisterCommand(self)
 		return self
 	end
 
 	function controller:Run()
-		library:RunCommand(id)
+		library:RunCommand(self)
 		return self
 	end
 
@@ -198,6 +203,9 @@ function Commands:Unregister(library, idOrController)
 	self:Init(library)
 	local id = typeof(idOrController) == "table" and idOrController.Id or idOrController
 	if typeof(id) ~= "string" or library._commands[id] == nil then
+		return false
+	end
+	if typeof(idOrController) == "table" and library._commands[id].Controller ~= idOrController then
 		return false
 	end
 	library._commands[id] = nil
@@ -218,6 +226,11 @@ function Commands:Execute(library, idOrResult)
 	local result = idOrResult
 	if typeof(idOrResult) == "string" then
 		result = library._commands[idOrResult]
+	elseif typeof(idOrResult) == "table" and idOrResult.Type == nil and idOrResult.Id ~= nil then
+		result = library._commands[idOrResult.Id]
+		if result and result.Controller ~= idOrResult then
+			result = nil
+		end
 	end
 	if not result then
 		library:_Warn("Command", "Attempted to execute a missing command")

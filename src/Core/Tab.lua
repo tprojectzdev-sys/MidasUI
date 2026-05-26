@@ -134,6 +134,11 @@ function Tab:Hide()
 		return self
 	end
 
+	local dropdown = self.Library._expandedDropdown
+	if dropdown and dropdown.Section and dropdown.Section.Tab == self then
+		dropdown:SetExpanded(false, true)
+	end
+
 	if self.Button then
 		self.Button.Visible = false
 	end
