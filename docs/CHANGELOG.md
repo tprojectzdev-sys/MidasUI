@@ -1,5 +1,31 @@
 # Changelog
 
+## V1.9.0
+
+Theme: premium motion and depth, custom icons, shortcut ownership, overlay polish, and runtime verification.
+
+### Added
+
+- Internal `Shortcuts` manager with one owned persistent keyboard dispatcher for framework shortcuts and Keybind element triggering.
+- Configurable command-palette shortcut APIs with `Ctrl+K` retained as the default.
+- Window/menu toggle shortcut APIs and optional draggable theme-aware floating crown launcher.
+- Command palette Recent group and category-oriented result presentation.
+- `GetRuntimeReport`, `RunSelfTest`, `PrintRuntimeReport`, `DestroyAllWindows`, `IsLoaded`, and `Unload` lifecycle/QA APIs.
+- Custom icon registry APIs supporting glyphs, image assets, and sprites for branded surfaces.
+
+### Improved
+
+- Palette, standard input, searchable dropdown, keybind capture, and prompt input focus visibility.
+- Richer DarkGold surfaces, section/window depth, icon-capable controls, notification progress rails, and animated modal/palette/dropdown exits.
+- Tracked/cancelled transition ownership across controls and transient overlays to prevent competing motion after cleanup.
+- Shortcut parsing supports `KeyCode`, `"Ctrl+K"`/`"Shift+K"` text chords, and descriptor tables with safe invalid-value warnings.
+- Showcase now covers shortcut replacement, launcher recovery, recent actions, self-test reporting, and unload behavior while retaining V1.8 tests.
+
+### Compatibility
+
+- Existing command, search, component, slider, dropdown, dialog, theme, config, and bundled loadstring APIs remain supported.
+- Framework shortcuts are suppressed during owned text/modal interactions and take priority over an element keybind intentionally assigned the same chord.
+
 ## V1.8.0
 
 Theme: command discovery, navigation speed, and keyboard-first large-interface workflows.

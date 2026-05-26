@@ -1,12 +1,12 @@
 # Themes
 
-MidasUI includes `DarkGold`, `Midnight`, and `BlackWhite`. Their richer surfaces include the V1.8 command palette, with a `Success` token used by workflow callouts, logs, and action rows.
+MidasUI includes `DarkGold`, `Midnight`, and `BlackWhite`. V1.9 DarkGold uses higher-contrast gold strokes, gradient-backed premium surfaces, and restrained depth in windows, sections, dialogs, notifications, and the command palette. `Success` is used by workflow callouts, logs, and action rows.
 
 ```lua
 MidasUI:SetTheme("Midnight")
 ```
 
-Switching the library theme updates existing windows, tabs, sections, elements, notifications, dialogs, and tooltips.
+Switching the library theme updates existing windows, tabs, sections, icon-capable elements, notifications, dialogs, the command palette, dropdown overlays, and tooltips. Destroyed objects are not retained as theme targets.
 
 ## Theme Shape
 

@@ -1,6 +1,6 @@
 # Commands, Search, And Navigation
 
-V1.8 adds a global command palette for interfaces that outgrow manual tab browsing. Press `Ctrl+K` after creating a window, or call `MidasUI:OpenCommandPalette()`.
+V1.9 retains the global command palette for interfaces that outgrow manual tab browsing. Press its default `Ctrl+K` shortcut after creating a window, or call `MidasUI:OpenCommandPalette()`.
 
 ## Register Actions
 
@@ -26,6 +26,8 @@ MidasUI:UnregisterCommand("open_settings")
 ```
 
 Command callbacks run through the same protected callback path as elements. Invalid registration is ignored and is reported when debug mode is enabled. Set `CloseOnRun = false` only when an action intentionally leaves the palette open.
+
+Executed commands are retained in a small in-memory Recent group. Reopening an empty palette places recent actions first; destroyed or unregistered commands disappear from that history automatically. Results retain compact category labels for scanning.
 
 ## Discovery And Navigation
 
@@ -66,6 +68,8 @@ Hidden dependency controls are excluded while unavailable and become discoverabl
 
 Dialogs have modal priority: showing a dialog closes the palette and places the dialog above all windows. Existing registered keybind actions do not receive the palette hotkey, and normal keybind dispatch pauses while a palette, dialog, focused text box, or expanded dropdown owns keyboard input.
 
+Replace or disable the default chord with `MidasUI:SetCommandPaletteShortcut("Shift+K")` or `MidasUI:ClearCommandPaletteShortcut()`. See [SHORTCUTS.md](SHORTCUTS.md) for supported chord formats and menu-toggle coordination.
+
 ## Searchable Dropdowns
 
 Dropdowns containing eight or more options gain filtering automatically. Configure it explicitly when needed:
@@ -90,4 +94,4 @@ For `PowerPanel`, register commands that reveal compact groups, expand a long op
 
 ## Diagnostics
 
-With `MidasUI:SetDebug(true)`, `MidasUI:GetDebugState()` exposes `CommandCount`, `SearchItemCount`, `KeybindCount`, `WindowCount`, `HasOpenCommandPalette`, `HasExpandedDropdown`, `ActiveOverlay`, and a `PublicAPIs` command-method availability table. Debug remains off by default.
+`MidasUI:GetRuntimeReport()` exposes command/search/keybind/shortcut/window counts, configured shortcut labels, overlay state, and API availability. `MidasUI:RunSelfTest()` adds pass/fail checks; `PrintRuntimeReport()` emits its summary only after `MidasUI:SetDebug(true)`.

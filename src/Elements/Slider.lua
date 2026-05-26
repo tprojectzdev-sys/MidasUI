@@ -182,7 +182,7 @@ function Slider.new(context, section, options)
 			return
 		end
 
-		utility:Tween(knob, utility.Motion.Fast, { Size = UDim2.fromOffset(18, 18) })
+		utility:TweenTracked(self.Tweens, "KnobSize", knob, utility.Motion.Hover, { Size = UDim2.fromOffset(18, 18) })
 	end)
 
 	utility:Connect(self.Connections, bar.MouseLeave, function()
@@ -190,7 +190,7 @@ function Slider.new(context, section, options)
 			return
 		end
 
-		utility:Tween(knob, utility.Motion.Fast, { Size = UDim2.fromOffset(16, 16) })
+		utility:TweenTracked(self.Tweens, "KnobSize", knob, utility.Motion.Hover, { Size = UDim2.fromOffset(16, 16) })
 	end)
 
 	utility:Connect(self.Connections, UserInputService.InputChanged, function(input)
@@ -210,7 +210,7 @@ function Slider.new(context, section, options)
 		if self.Dragging and (isMouseRelease or input == self.DragInput) then
 			self.Dragging = false
 			self.DragInput = nil
-			utility:Tween(knob, utility.Motion.Fast, { Size = UDim2.fromOffset(16, 16) })
+			utility:TweenTracked(self.Tweens, "KnobSize", knob, utility.Motion.Hover, { Size = UDim2.fromOffset(16, 16) })
 		end
 	end)
 
@@ -283,7 +283,7 @@ function Slider:SetEnabled(enabled)
 	if not self.Enabled then
 		self.Dragging = false
 		self.DragInput = nil
-		self.Utility:Tween(self.Knob, self.Utility.Motion.Fast, { Size = UDim2.fromOffset(16, 16) })
+		self.Utility:TweenTracked(self.Tweens, "KnobSize", self.Knob, self.Utility.Motion.Hover, { Size = UDim2.fromOffset(16, 16) })
 	end
 	return self
 end

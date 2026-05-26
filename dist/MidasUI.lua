@@ -1,4 +1,4 @@
--- MidasUI V1.8 single-file bundle
+-- MidasUI V1.9 single-file bundle
 -- Generated from src modules by tools/build-dist.ps1. Edit src/ first.
 local ModuleCache = {}
 local ModuleSources = {}
@@ -22,6 +22,12 @@ Icons.Map = {
 	check = "Y",
 	bell = "B",
 	menu = "M",
+	sparkle = "*",
+	palette = "P",
+	command = ">",
+	notification = "!",
+	dropdown = "v",
+	dialog = "D",
 }
 
 return Icons
@@ -33,9 +39,14 @@ local UserInputService = game:GetService("UserInputService")
 local Utility = {}
 
 Utility.Motion = {
-	Fast = 0.11,
-	Standard = 0.17,
+	Press = 0.08,
+	Fast = 0.12,
+	Hover = 0.14,
+	Standard = 0.18,
+	Toggle = 0.2,
+	Overlay = 0.22,
 	Reveal = 0.28,
+	Window = 0.3,
 	Exit = 0.2,
 	IntroDrop = 0.34,
 }
@@ -58,6 +69,7 @@ Utility.IconGlyphs = {
 	plus = "+",
 	check = "Y",
 }
+Utility.CustomIcons = {}
 
 function Utility:Create(className, properties, children)
 	local object = Instance.new(className)
@@ -147,17 +159,159 @@ function Utility:CancelTweens(store)
 	end
 end
 
-function Utility:IconText(icon)
+function Utility:RegisterIcon(name, definition)
+	if typeof(name) ~= "string" or name == "" then
+		return false, "Icon name must be a non-empty string"
+	end
+
+	local key = string.lower(name)
+	if typeof(definition) == "number" then
+		self.CustomIcons[key] = { Image = "rbxassetid://" .. tostring(definition) }
+	elseif typeof(definition) == "string" and string.find(definition, "^rbxassetid://") then
+		self.CustomIcons[key] = { Image = definition }
+	elseif typeof(definition) == "string" and definition ~= "" then
+		self.CustomIcons[key] = { Text = definition }
+	elseif typeof(definition) == "table" then
+		local image = definition.Image or definition.AssetId
+		if typeof(image) == "number" then
+			image = "rbxassetid://" .. tostring(image)
+		end
+		if typeof(image) == "string" and image ~= "" then
+			local rectOffset = definition.ImageRectOffset or definition.RectOffset
+			local rectSize = definition.ImageRectSize or definition.RectSize
+			self.CustomIcons[key] = {
+				Image = image,
+				ImageRectOffset = typeof(rectOffset) == "Vector2" and rectOffset or nil,
+				ImageRectSize = typeof(rectSize) == "Vector2" and rectSize or nil,
+			}
+		elseif typeof(definition.Text) == "string" and definition.Text ~= "" then
+			self.CustomIcons[key] = { Text = definition.Text }
+		else
+			return false, "Icon definition must contain Image, AssetId, or Text"
+		end
+	else
+		return false, "Icon definition must be text, asset id, or a definition table"
+	end
+	return true, key
+end
+
+function Utility:ResolveIcon(icon)
 	if typeof(icon) == "number" then
-		return ""
+		return { Image = "rbxassetid://" .. tostring(icon) }
 	end
-
-	if typeof(icon) == "string" and icon ~= "" then
-		local lower = string.lower(icon)
-		return self.IconGlyphs[lower] or string.upper(string.sub(icon, 1, 1))
+	if typeof(icon) == "table" then
+		local temporaryName = "__direct"
+		local previous = self.CustomIcons[temporaryName]
+		local ok = self:RegisterIcon(temporaryName, icon)
+		local resolved = ok and self.CustomIcons[temporaryName] or nil
+		self.CustomIcons[temporaryName] = previous
+		return resolved
 	end
+	if typeof(icon) ~= "string" or icon == "" then
+		return nil
+	end
+	if string.find(icon, "^rbxassetid://") then
+		return { Image = icon }
+	end
+	local lower = string.lower(icon)
+	if self.CustomIcons[lower] then
+		return self.CustomIcons[lower]
+	end
+	if self.IconGlyphs[lower] then
+		return { Text = self.IconGlyphs[lower] }
+	end
+	return { Text = string.upper(string.sub(icon, 1, 1)) }
+end
 
-	return ""
+function Utility:IconText(icon)
+	local resolved = self:ResolveIcon(icon)
+	return resolved and resolved.Text or ""
+end
+
+function Utility:CreateIcon(parent, icon, properties)
+	properties = properties or {}
+	local color = properties.Color or Color3.new(1, 1, 1)
+	local root = self:Create("Frame", {
+		Name = properties.Name or "Icon",
+		Position = properties.Position or UDim2.fromOffset(0, 0),
+		Size = properties.Size or UDim2.fromOffset(18, 18),
+		BackgroundTransparency = 1,
+		ZIndex = properties.ZIndex or (parent and parent.ZIndex or 1),
+		Parent = parent,
+	})
+	local glyph = self:Create("TextLabel", {
+		Name = "Glyph",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Font = properties.Font or Enum.Font.GothamBold,
+		Text = "",
+		TextColor3 = color,
+		TextSize = properties.TextSize or 13,
+		ZIndex = root.ZIndex,
+		Parent = root,
+	})
+	local image = self:Create("ImageLabel", {
+		Name = "Image",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Image = "",
+		ImageColor3 = color,
+		ScaleType = Enum.ScaleType.Fit,
+		Visible = false,
+		ZIndex = root.ZIndex,
+		Parent = root,
+	})
+	self:SetIcon(root, icon, color)
+	return root
+end
+
+function Utility:SetIcon(root, icon, color)
+	if not root then
+		return
+	end
+	local resolved = self:ResolveIcon(icon)
+	local glyph = root:FindFirstChild("Glyph")
+	local image = root:FindFirstChild("Image")
+	if glyph then
+		glyph.Text = resolved and resolved.Text or ""
+		glyph.TextColor3 = color or glyph.TextColor3
+		glyph.Visible = resolved ~= nil and resolved.Text ~= nil
+	end
+	if image then
+		image.Image = resolved and resolved.Image or ""
+		image.ImageColor3 = color or image.ImageColor3
+		image.ImageRectOffset = resolved and resolved.ImageRectOffset or Vector2.new(0, 0)
+		image.ImageRectSize = resolved and resolved.ImageRectSize or Vector2.new(0, 0)
+		image.Visible = resolved ~= nil and resolved.Image ~= nil
+	end
+end
+
+function Utility:SetIconColor(root, color)
+	if not root then
+		return
+	end
+	local glyph = root:FindFirstChild("Glyph")
+	local image = root:FindFirstChild("Image")
+	if glyph then
+		glyph.TextColor3 = color
+	end
+	if image then
+		image.ImageColor3 = color
+	end
+end
+
+function Utility:SetIconTransparency(root, transparency)
+	if not root then
+		return
+	end
+	local glyph = root:FindFirstChild("Glyph")
+	local image = root:FindFirstChild("Image")
+	if glyph then
+		glyph.TextTransparency = transparency
+	end
+	if image then
+		image.ImageTransparency = transparency
+	end
 end
 
 function Utility:CreateCrownMark(parent, theme, size)
@@ -306,6 +460,9 @@ function Utility:MakeDraggable(handle, target, connections, options)
 		dragging = true
 		dragStart = input.Position
 		startPosition = target.Position
+		if options.OnDragStart then
+			options.OnDragStart()
+		end
 	end)
 
 	self:Connect(connections, UserInputService.InputChanged, function(input)
@@ -318,6 +475,9 @@ function Utility:MakeDraggable(handle, target, connections, options)
 		end
 
 		local delta = input.Position - dragStart
+		if options.OnDragMove then
+			options.OnDragMove(delta)
+		end
 		target.Position = UDim2.new(
 			startPosition.X.Scale,
 			startPosition.X.Offset + delta.X,
@@ -333,6 +493,9 @@ function Utility:MakeDraggable(handle, target, connections, options)
 	self:Connect(connections, UserInputService.InputEnded, function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
+			if options.OnDragEnd then
+				options.OnDragEnd()
+			end
 		end
 	end)
 end
@@ -374,17 +537,17 @@ Theme.RequiredKeys = {
 
 Theme.Registry = {
 	DarkGold = {
-		Background = Color3.fromRGB(10, 10, 12),
-		Topbar = Color3.fromRGB(28, 23, 17),
-		Sidebar = Color3.fromRGB(15, 14, 15),
-		Card = Color3.fromRGB(26, 23, 19),
-		Accent = Color3.fromRGB(226, 181, 72),
-		AccentSoft = Color3.fromRGB(65, 49, 22),
-		Highlight = Color3.fromRGB(255, 220, 132),
-		Text = Color3.fromRGB(250, 246, 235),
-		MutedText = Color3.fromRGB(174, 160, 133),
-		Stroke = Color3.fromRGB(98, 72, 33),
-		Shadow = Color3.fromRGB(4, 4, 6),
+		Background = Color3.fromRGB(10, 10, 11),
+		Topbar = Color3.fromRGB(30, 25, 17),
+		Sidebar = Color3.fromRGB(16, 15, 14),
+		Card = Color3.fromRGB(28, 24, 18),
+		Accent = Color3.fromRGB(231, 183, 68),
+		AccentSoft = Color3.fromRGB(72, 52, 19),
+		Highlight = Color3.fromRGB(255, 222, 134),
+		Text = Color3.fromRGB(252, 248, 239),
+		MutedText = Color3.fromRGB(188, 171, 139),
+		Stroke = Color3.fromRGB(112, 81, 35),
+		Shadow = Color3.fromRGB(3, 3, 4),
 		Danger = Color3.fromRGB(226, 82, 82),
 		Success = Color3.fromRGB(78, 188, 121),
 	},
@@ -978,7 +1141,6 @@ local Notify = {}
 function Notify:Init(context)
 	local library = context.Library
 	local utility = context.Utility
-
 	if library._notifyGui then
 		return
 	end
@@ -991,17 +1153,15 @@ function Notify:Init(context)
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		Parent = utility:GetGuiParent(),
 	})
-
 	local holder = utility:Create("Frame", {
 		Name = "Holder",
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -18, 0, 18),
-		Size = UDim2.fromOffset(300, 0),
+		Size = UDim2.fromOffset(322, 0),
 		BackgroundTransparency = 1,
 		Parent = gui,
 	})
-	utility:List(holder, 8)
-
+	utility:List(holder, 9)
 	library._notifyGui = gui
 	library._notifyHolder = holder
 	library._notifications = library._notifications or {}
@@ -1017,44 +1177,45 @@ function Notify:Show(context, options)
 	local duration = math.max(tonumber(options.Duration) or 5, 0.5)
 	local titleText = tostring(options.Title or "MidasUI")
 	local contentText = tostring(options.Content or "")
-
-	local function removeFrame(target)
-		if not library._notifications then
-			return
-		end
-
-		for index = #library._notifications, 1, -1 do
-			if library._notifications[index] == target then
-				table.remove(library._notifications, index)
-				break
-			end
-		end
-	end
-
-	if #library._notifications >= 6 then
-		local oldest = table.remove(library._notifications, 1)
-		if oldest and oldest.Parent then
-			oldest:Destroy()
-		end
-	end
-
 	local tweens = {}
-	local closing = false
+	local connections = {}
+	local record = { Tweens = tweens, Connections = connections, Closing = false }
+
+	while #library._notifications >= 6 do
+		local oldest = table.remove(library._notifications, 1)
+		if oldest and oldest.Close then
+			oldest:Close(true)
+		end
+	end
+
 	local frame = utility:Create("Frame", {
 		Name = "Notification",
-		Size = UDim2.new(1, 0, 0, 86),
+		Size = UDim2.new(1, 0, 0, contentText == "" and 70 or 88),
 		BackgroundColor3 = theme.Card,
-		BackgroundTransparency = 0.04,
-		Position = UDim2.fromOffset(320, 0),
+		BackgroundTransparency = 0.02,
+		Position = UDim2.fromOffset(342, 0),
 		Parent = library._notifyHolder,
 	})
-	utility:Corner(frame, 8)
-	utility:Stroke(frame, theme.Stroke, 0.25)
-	utility:Padding(frame, { X = 14, Y = 12 })
+	utility:Corner(frame, 11)
+	utility:Stroke(frame, theme.Stroke, 0.16)
+	utility:Padding(frame, { X = 14, Y = 11 })
+	record.Frame = frame
 
+	local icon
+	local left = 0
+	if options.Icon ~= nil then
+		icon = utility:CreateIcon(frame, options.Icon, {
+			Position = UDim2.fromOffset(0, 2),
+			Size = UDim2.fromOffset(20, 20),
+			Color = theme.Accent,
+			TextSize = 13,
+		})
+		left = 29
+	end
 	local title = utility:Create("TextLabel", {
 		Name = "Title",
-		Size = UDim2.new(1, 0, 0, 22),
+		Position = UDim2.fromOffset(left, 0),
+		Size = UDim2.new(1, -(left + 28), 0, 22),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamSemibold,
 		Text = titleText,
@@ -1064,22 +1225,20 @@ function Notify:Show(context, options)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
 	})
-
 	local content = utility:Create("TextLabel", {
 		Name = "Content",
-		Position = UDim2.fromOffset(0, 28),
-		Size = UDim2.new(1, 0, 0, contentText == "" and 0 or 34),
+		Position = UDim2.fromOffset(left, 27),
+		Size = UDim2.new(1, -(left + 4), 0, contentText == "" and 0 or 34),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
 		Text = contentText,
 		TextColor3 = theme.MutedText,
-		TextSize = 13,
+		TextSize = 12,
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
 		Parent = frame,
 	})
-
 	local accent = utility:Create("Frame", {
 		Name = "Accent",
 		Size = UDim2.new(0, 3, 1, -18),
@@ -1088,40 +1247,60 @@ function Notify:Show(context, options)
 		Parent = frame,
 	})
 	utility:Corner(accent, 4)
+	local close = utility:Create("TextButton", {
+		Name = "Close",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, 1),
+		Size = UDim2.fromOffset(20, 20),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = "x",
+		TextColor3 = theme.MutedText,
+		TextSize = 11,
+		AutoButtonColor = false,
+		Parent = frame,
+	})
+	local progress = utility:Create("Frame", {
+		Name = "Progress",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 2),
+		BackgroundColor3 = theme.Accent,
+		BackgroundTransparency = 0.28,
+		BorderSizePixel = 0,
+		Parent = frame,
+	})
+	utility:Corner(progress, 2)
 
-	title.TextTransparency = 1
-	content.TextTransparency = 1
-	frame.BackgroundTransparency = 1
-	utility:TweenTracked(tweens, "Frame", frame, utility.Motion.Reveal, {
-		Position = UDim2.fromOffset(-8, 0),
-		BackgroundTransparency = 0.04,
-	}, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-	utility:Tween(title, utility.Motion.Standard, { TextTransparency = 0 })
-	utility:Tween(content, utility.Motion.Standard, { TextTransparency = 0 })
-	task.delay(utility.Motion.Standard, function()
-		if frame.Parent and not closing then
-			utility:TweenTracked(tweens, "Frame", frame, utility.Motion.Fast, {
-				Position = UDim2.fromOffset(0, 0),
-			}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		end
-	end)
-
-	table.insert(library._notifications, frame)
-
-	local function animateOut()
-		if closing or not frame or not frame.Parent then
+	function record:Close(instant)
+		if self.Closing then
 			return
 		end
-
-		closing = true
-		local tween = utility:TweenTracked(tweens, "Frame", frame, utility.Motion.Exit, {
-			Position = UDim2.fromOffset(330, 0),
+		self.Closing = true
+		for index = #library._notifications, 1, -1 do
+			if library._notifications[index] == self then
+				table.remove(library._notifications, index)
+				break
+			end
+		end
+		utility:DisconnectAll(self.Connections)
+		if instant or not frame.Parent then
+			utility:CancelTweens(tweens)
+			if frame.Parent then
+				frame:Destroy()
+			end
+			return
+		end
+		utility:TweenTracked(tweens, "Title", title, utility.Motion.Fast, { TextTransparency = 1 })
+		utility:TweenTracked(tweens, "Content", content, utility.Motion.Fast, { TextTransparency = 1 })
+		if icon then
+			utility:TweenTracked(tweens, "Icon", icon, utility.Motion.Fast, { BackgroundTransparency = 1 })
+		end
+		local exit = utility:TweenTracked(tweens, "Frame", frame, utility.Motion.Exit, {
+			Position = UDim2.fromOffset(344, 0),
 			BackgroundTransparency = 1,
 		}, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-		utility:Tween(title, utility.Motion.Fast, { TextTransparency = 1 })
-		utility:Tween(content, utility.Motion.Fast, { TextTransparency = 1 })
-		tween.Completed:Connect(function()
-			removeFrame(frame)
+		exit.Completed:Connect(function()
 			utility:CancelTweens(tweens)
 			if frame.Parent then
 				frame:Destroy()
@@ -1131,17 +1310,45 @@ function Notify:Show(context, options)
 
 	local controller = {}
 	function controller:Close()
-		animateOut()
+		record:Close(false)
 		return self
 	end
 
-	task.delay(duration, function()
-		if not frame.Parent or closing then
-			return
-		end
-		animateOut()
+	utility:Connect(connections, close.MouseEnter, function()
+		utility:TweenTracked(tweens, "Close", close, utility.Motion.Hover, { TextColor3 = library.Theme.Text })
+	end)
+	utility:Connect(connections, close.MouseLeave, function()
+		utility:TweenTracked(tweens, "Close", close, utility.Motion.Hover, { TextColor3 = library.Theme.MutedText })
+	end)
+	utility:Connect(connections, close.MouseButton1Click, function()
+		record:Close(false)
 	end)
 
+	title.TextTransparency = 1
+	content.TextTransparency = 1
+	frame.BackgroundTransparency = 1
+	table.insert(library._notifications, record)
+	utility:TweenTracked(tweens, "Frame", frame, utility.Motion.Reveal, {
+		Position = UDim2.fromOffset(-7, 0),
+		BackgroundTransparency = 0.02,
+	}, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	utility:TweenTracked(tweens, "Title", title, utility.Motion.Standard, { TextTransparency = 0 })
+	utility:TweenTracked(tweens, "Content", content, utility.Motion.Standard, { TextTransparency = 0 })
+	task.delay(utility.Motion.Standard, function()
+		if frame.Parent and not record.Closing then
+			utility:TweenTracked(tweens, "Frame", frame, utility.Motion.Hover, {
+				Position = UDim2.fromOffset(0, 0),
+			}, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+		end
+	end)
+	utility:TweenTracked(tweens, "Progress", progress, duration, {
+		Size = UDim2.new(0, 0, 0, 2),
+	}, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+	task.delay(duration, function()
+		if frame.Parent then
+			record:Close(false)
+		end
+	end)
 	return controller
 end
 
@@ -1151,26 +1358,39 @@ function Notify:SetTheme(context)
 	if not holder then
 		return
 	end
-
 	local theme = library.Theme
 	for _, frame in ipairs(holder:GetChildren()) do
 		if frame:IsA("Frame") and frame.Name == "Notification" then
 			frame.BackgroundColor3 = theme.Card
 			context.Utility:ApplyStrokeTheme(frame, theme.Stroke)
-			local title = frame:FindFirstChild("Title")
-			local content = frame:FindFirstChild("Content")
-			local accent = frame:FindFirstChild("Accent")
-			if title then
-				title.TextColor3 = theme.Text
-			end
-			if content then
-				content.TextColor3 = theme.MutedText
-			end
-			if accent then
-				accent.BackgroundColor3 = theme.Accent
+			for _, item in ipairs(frame:GetChildren()) do
+				if item.Name == "Title" then
+					item.TextColor3 = theme.Text
+				elseif item.Name == "Content" or item.Name == "Close" then
+					item.TextColor3 = theme.MutedText
+				elseif item.Name == "Accent" or item.Name == "Progress" then
+					item.BackgroundColor3 = theme.Accent
+				elseif item.Name == "Icon" then
+					context.Utility:SetIconColor(item, theme.Accent)
+				end
 			end
 		end
 	end
+end
+
+function Notify:Destroy(context)
+	local library = context.Library
+	for _, record in ipairs(table.clone(library._notifications or {})) do
+		if record and record.Close then
+			record:Close(true)
+		end
+	end
+	if library._notifyGui then
+		library._notifyGui:Destroy()
+		library._notifyGui = nil
+	end
+	library._notifyHolder = nil
+	library._notifications = nil
 end
 
 return Notify
@@ -1231,6 +1451,7 @@ function Tooltip:Init(context)
 	library._tooltipFrame = frame
 	library._tooltipLabel = label
 	library._tooltipConnections = library._tooltipConnections or {}
+	library._tooltipTweens = library._tooltipTweens or {}
 
 	utility:Connect(library._tooltipConnections, UserInputService.InputChanged, function(input)
 		if input.UserInputType == Enum.UserInputType.MouseMovement and frame.Visible then
@@ -1280,7 +1501,7 @@ function Tooltip:Show(context, text)
 	label.Text = tostring(text)
 	frame.Visible = true
 	frame.BackgroundTransparency = 1
-	context.Utility:Tween(frame, context.Utility.Motion.Fast, { BackgroundTransparency = 0.02 })
+	context.Utility:TweenTracked(library._tooltipTweens, "Frame", frame, context.Utility.Motion.Fast, { BackgroundTransparency = 0.02 })
 	self:Position(context, UserInputService:GetMouseLocation())
 end
 
@@ -1288,6 +1509,7 @@ function Tooltip:Hide(context)
 	local library = context.Library
 	local frame = library._tooltipFrame
 	if frame then
+		context.Utility:CancelTweens(library._tooltipTweens)
 		frame.Visible = false
 	end
 end
@@ -1331,72 +1553,57 @@ end
 return Tooltip
 end
 ModuleSources["Core/Keybinds"] = function()
-local UserInputService = game:GetService("UserInputService")
-
 local Keybinds = {}
 
 function Keybinds:Init(library)
-	if library._keybindsReady then
-		return
+	if library._EnsureShortcuts then
+		library:_EnsureShortcuts()
+	end
+	library._keybindsReady = true
+end
+
+function Keybinds:HandleInputBegan(library, input, processed)
+	if library._activeDialog or library._activePalette
+		or (library._expandedDropdown and library._expandedDropdown.Expanded) then
+		return false
 	end
 
-	library._keybindsReady = true
-	library._keybindConnections = library._keybindConnections or {}
+	local listening = library._listeningKeybind
+	if listening then
+		listening:CaptureInput(input.KeyCode)
+		return true
+	end
 
-	table.insert(library._keybindConnections, UserInputService.InputBegan:Connect(function(input, processed)
-		if input.UserInputType ~= Enum.UserInputType.Keyboard then
-			return
-		end
+	if processed or game:GetService("UserInputService"):GetFocusedTextBox() then
+		return false
+	end
 
-		if library._activeDialog or library._activePalette
-			or (library._expandedDropdown and library._expandedDropdown.Expanded) then
-			return
-		end
-
-		local listening = library._listeningKeybind
-		if listening then
-			listening:CaptureInput(input.KeyCode)
-			return
-		end
-
-		if library._IsCommandPaletteHotkey and library:_IsCommandPaletteHotkey(input) then
-			return
-		end
-
-		if processed or UserInputService:GetFocusedTextBox() then
-			return
-		end
-
-		for _, bind in pairs(library.Keybinds) do
-			if bind.Enabled ~= false and bind.KeyCode ~= nil and bind.KeyCode == input.KeyCode then
-				if bind.Mode == "Hold" then
-					if not bind.Holding then
-						bind.Holding = true
-						library:_InvokeCallback("Keybind", bind.Callback, true, bind.KeyCode)
-					end
-				elseif not bind.Holding then
+	for _, bind in pairs(library.Keybinds) do
+		if bind.Enabled ~= false and bind.KeyCode ~= nil and bind.KeyCode == input.KeyCode then
+			if bind.Mode == "Hold" then
+				if not bind.Holding then
 					bind.Holding = true
-					library:_InvokeCallback("Keybind", bind.Callback, bind.KeyCode)
+					library:_InvokeCallback("Keybind", bind.Callback, true, bind.KeyCode)
 				end
+			elseif not bind.Holding then
+				bind.Holding = true
+				library:_InvokeCallback("Keybind", bind.Callback, bind.KeyCode)
 			end
 		end
-	end))
+	end
+	return false
+end
 
-	table.insert(library._keybindConnections, UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType ~= Enum.UserInputType.Keyboard then
-			return
-		end
+function Keybinds:HandleInputEnded(library, input)
+	for _, bind in pairs(library.Keybinds) do
+		if bind.KeyCode ~= nil and bind.KeyCode == input.KeyCode and bind.Holding then
+			bind.Holding = false
 
-		for _, bind in pairs(library.Keybinds) do
-			if bind.KeyCode ~= nil and bind.KeyCode == input.KeyCode and bind.Holding then
-				bind.Holding = false
-
-				if bind.Mode == "Hold" and bind.Enabled ~= false then
-					library:_InvokeCallback("Keybind", bind.Callback, false, bind.KeyCode)
-				end
+			if bind.Mode == "Hold" and bind.Enabled ~= false then
+				library:_InvokeCallback("Keybind", bind.Callback, false, bind.KeyCode)
 			end
 		end
-	end))
+	end
 end
 
 function Keybinds:Register(library, keybind)
@@ -1490,6 +1697,250 @@ end
 
 return Keybinds
 end
+ModuleSources["Core/Shortcuts"] = function()
+local UserInputService = game:GetService("UserInputService")
+
+local Shortcuts = {}
+
+local MODIFIER_KEYS = {
+	[Enum.KeyCode.LeftControl] = "Ctrl",
+	[Enum.KeyCode.RightControl] = "Ctrl",
+	[Enum.KeyCode.LeftShift] = "Shift",
+	[Enum.KeyCode.RightShift] = "Shift",
+	[Enum.KeyCode.LeftAlt] = "Alt",
+	[Enum.KeyCode.RightAlt] = "Alt",
+}
+
+local function keyCodeFromString(value)
+	for _, keyCode in ipairs(Enum.KeyCode:GetEnumItems()) do
+		if string.lower(keyCode.Name) == string.lower(value) then
+			return keyCode
+		end
+	end
+	return nil
+end
+
+function Shortcuts:Normalize(value)
+	if value == nil or value == false then
+		return nil, nil
+	end
+
+	local descriptor = {
+		Ctrl = false,
+		Shift = false,
+		Alt = false,
+	}
+
+	if typeof(value) == "EnumItem" and value.EnumType == Enum.KeyCode then
+		descriptor.KeyCode = value
+	elseif typeof(value) == "string" then
+		for token in string.gmatch(value, "[^+%s]+") do
+			local lowerToken = string.lower(token)
+			if lowerToken == "ctrl" or lowerToken == "control" then
+				descriptor.Ctrl = true
+			elseif lowerToken == "shift" then
+				descriptor.Shift = true
+			elseif lowerToken == "alt" then
+				descriptor.Alt = true
+			else
+				descriptor.KeyCode = keyCodeFromString(token)
+				if not descriptor.KeyCode then
+					return nil, "Unknown shortcut key '" .. tostring(token) .. "'"
+				end
+			end
+		end
+	elseif typeof(value) == "table" then
+		descriptor.KeyCode = value.KeyCode or value.Key
+		descriptor.Ctrl = value.Ctrl == true or value.Control == true
+		descriptor.Shift = value.Shift == true
+		descriptor.Alt = value.Alt == true
+	else
+		return nil, "Shortcut must be a KeyCode, string, table, false, or nil"
+	end
+
+	if typeof(descriptor.KeyCode) ~= "EnumItem" or descriptor.KeyCode.EnumType ~= Enum.KeyCode
+		or descriptor.KeyCode == Enum.KeyCode.Unknown then
+		return nil, "Shortcut must include a valid KeyCode"
+	end
+
+	return descriptor, nil
+end
+
+function Shortcuts:Format(descriptor)
+	if not descriptor then
+		return "Disabled"
+	end
+
+	local parts = {}
+	if descriptor.Ctrl then
+		table.insert(parts, "Ctrl")
+	end
+	if descriptor.Shift then
+		table.insert(parts, "Shift")
+	end
+	if descriptor.Alt then
+		table.insert(parts, "Alt")
+	end
+	table.insert(parts, descriptor.KeyCode.Name)
+	return table.concat(parts, "+")
+end
+
+function Shortcuts:Matches(descriptor, input)
+	if not descriptor or not input or descriptor.KeyCode ~= input.KeyCode then
+		return false
+	end
+
+	local ownModifier = MODIFIER_KEYS[descriptor.KeyCode]
+	local ctrlDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+		or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+	local shiftDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+		or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+	local altDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt)
+		or UserInputService:IsKeyDown(Enum.KeyCode.RightAlt)
+
+	return (ownModifier == "Ctrl" or ctrlDown == descriptor.Ctrl)
+		and (ownModifier == "Shift" or shiftDown == descriptor.Shift)
+		and (ownModifier == "Alt" or altDown == descriptor.Alt)
+end
+
+function Shortcuts:Set(library, id, value, callback, options)
+	library._shortcuts = library._shortcuts or {}
+	options = options or {}
+
+	if value == nil or value == false then
+		library._shortcuts[id] = nil
+		return true, "Disabled"
+	end
+
+	local descriptor, err = self:Normalize(value)
+	if not descriptor then
+		library:_Warn("Shortcut", "Ignored shortcut '" .. tostring(id) .. "': " .. tostring(err))
+		return false, err
+	end
+	if typeof(callback) ~= "function" then
+		library:_Warn("Shortcut", "Ignored shortcut '" .. tostring(id) .. "': callback must be a function")
+		return false, "Shortcut callback must be a function"
+	end
+
+	library._shortcutSequence = (library._shortcutSequence or 0) + 1
+	library._shortcuts[id] = {
+		Id = id,
+		Shortcut = descriptor,
+		Display = self:Format(descriptor),
+		Callback = callback,
+		Owner = options.Owner,
+		Priority = tonumber(options.Priority) or 0,
+		Sequence = library._shortcutSequence,
+	}
+	return true, library._shortcuts[id].Display
+end
+
+function Shortcuts:RemoveOwner(library, owner)
+	for id, record in pairs(library._shortcuts or {}) do
+		if record.Owner == owner then
+			library._shortcuts[id] = nil
+		end
+	end
+end
+
+function Shortcuts:GetState(library)
+	local items = {}
+	for id, record in pairs(library._shortcuts or {}) do
+		if not record.Owner or (not record.Owner.Destroyed and not record.Owner.Closed) then
+			table.insert(items, {
+				Id = id,
+				Display = record.Display,
+				Owner = record.Owner,
+			})
+		end
+	end
+	table.sort(items, function(left, right)
+		return left.Id < right.Id
+	end)
+	return items
+end
+
+function Shortcuts:_DispatchFramework(context, input, processed)
+	local library = context.Library
+	local activePalette = library._activePalette
+	local focused = UserInputService:GetFocusedTextBox()
+	local paletteFocus = activePalette and focused == activePalette.SearchBox
+
+	if library._activeDialog or (library._expandedDropdown and library._expandedDropdown.Expanded) then
+		return false
+	end
+	if focused and not paletteFocus then
+		return false
+	end
+	if processed and not activePalette then
+		return false
+	end
+
+	local matches = {}
+	for id, record in pairs(library._shortcuts or {}) do
+		if record.Owner and (record.Owner.Destroyed or record.Owner.Closed) then
+			library._shortcuts[id] = nil
+		elseif (not activePalette or id == "command_palette") and self:Matches(record.Shortcut, input) then
+			table.insert(matches, record)
+		end
+	end
+	table.sort(matches, function(left, right)
+		if left.Priority == right.Priority then
+			return left.Sequence > right.Sequence
+		end
+		return left.Priority > right.Priority
+	end)
+
+	local record = matches[1]
+	if not record then
+		return false
+	end
+
+	local ok, err = pcall(record.Callback)
+	if not ok then
+		library:_Warn("Shortcut", "Callback failed: " .. tostring(err))
+	end
+	return true
+end
+
+function Shortcuts:Init(context)
+	local library = context.Library
+	if library._shortcutsReady then
+		return
+	end
+
+	library._shortcutsReady = true
+	library._shortcutConnections = library._shortcutConnections or {}
+	context.Utility:Connect(library._shortcutConnections, UserInputService.InputBegan, function(input, processed)
+		if input.UserInputType ~= Enum.UserInputType.Keyboard or library._destroyed then
+			return
+		end
+
+		if library._listeningKeybind then
+			context.Keybinds:HandleInputBegan(library, input, processed)
+			return
+		end
+
+		if not Shortcuts:_DispatchFramework(context, input, processed) then
+			context.Keybinds:HandleInputBegan(library, input, processed)
+		end
+	end)
+	context.Utility:Connect(library._shortcutConnections, UserInputService.InputEnded, function(input)
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+			context.Keybinds:HandleInputEnded(library, input)
+		end
+	end)
+end
+
+function Shortcuts:Destroy(context)
+	local library = context.Library
+	context.Utility:DisconnectAll(library._shortcutConnections)
+	table.clear(library._shortcuts or {})
+	library._shortcutsReady = false
+end
+
+return Shortcuts
+end
 ModuleSources["Core/Dialog"] = function()
 local Dialog = {}
 
@@ -1513,22 +1964,43 @@ function Dialog:Init(context)
 	library._dialogGui = gui
 end
 
-function Dialog:Close(context, controller)
+function Dialog:Close(context, controller, instant)
 	local library = context.Library
 	local dialog = library._activeDialog
 	if controller and dialog and dialog.Controller ~= controller then
 		return
 	end
-
-	if dialog and dialog.Connections then
-		context.Utility:DisconnectAll(dialog.Connections)
+	if not dialog then
+		return
 	end
-	if dialog and dialog.Gui then
-		dialog.Gui:Destroy()
+	library._activeDialog = nil
+	context.Utility:DisconnectAll(dialog.Connections)
+	if instant or not dialog.Gui or not dialog.Gui.Parent then
+		context.Utility:CancelTweens(dialog.Tweens)
+		if dialog.Gui and dialog.Gui.Parent then
+			dialog.Gui:Destroy()
+		end
+		return
 	end
-	if not controller or not dialog or dialog.Controller == controller then
-		library._activeDialog = nil
-	end
+	library._closingDialog = dialog
+	context.Utility:TweenTracked(dialog.Tweens, "Overlay", dialog.Gui, context.Utility.Motion.Exit, {
+		BackgroundTransparency = 1,
+	}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	context.Utility:TweenTracked(dialog.Tweens, "Scale", dialog.Scale, context.Utility.Motion.Exit, {
+		Scale = 0.975,
+	}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	local exit = context.Utility:TweenTracked(dialog.Tweens, "Card", dialog.Card, context.Utility.Motion.Exit, {
+		Position = UDim2.fromScale(0.5, 0.48),
+	}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	exit.Completed:Connect(function()
+		context.Utility:CancelTweens(dialog.Tweens)
+		if dialog.Gui and dialog.Gui.Parent then
+			dialog.Gui:Destroy()
+		end
+		if library._closingDialog == dialog then
+			library._closingDialog = nil
+		end
+	end)
 end
 
 function Dialog:SetTheme(context)
@@ -1543,6 +2015,9 @@ function Dialog:SetTheme(context)
 		dialog.Card.BackgroundColor3 = theme.Card
 		context.Utility:ApplyStrokeTheme(dialog.Card, theme.Stroke)
 	end
+	if dialog.Gradient then
+		dialog.Gradient.Color = ColorSequence.new(theme.Card, theme.Background)
+	end
 	if dialog.Title then
 		dialog.Title.TextColor3 = theme.Text
 	end
@@ -1552,10 +2027,14 @@ function Dialog:SetTheme(context)
 	if dialog.Signal then
 		dialog.Signal.BackgroundColor3 = dialog.Danger and theme.Danger or theme.Accent
 	end
+	if dialog.Icon then
+		context.Utility:SetIconColor(dialog.Icon, dialog.Danger and theme.Danger or theme.Accent)
+	end
 	if dialog.Input then
 		dialog.Input.BackgroundColor3 = theme.Background
 		dialog.Input.TextColor3 = theme.Text
 		dialog.Input.PlaceholderColor3 = theme.MutedText
+		context.Utility:ApplyStrokeTheme(dialog.Input, dialog.Input:IsFocused() and theme.Accent or theme.Stroke)
 	end
 	for _, button in ipairs(dialog.Buttons or {}) do
 		local primaryColor = dialog.Danger and theme.Danger or theme.Accent
@@ -1568,7 +2047,14 @@ end
 function Dialog:Show(context, options)
 	options = options or {}
 	self:Init(context)
-	self:Close(context)
+	self:Close(context, nil, true)
+	if context.Library._closingDialog then
+		context.Utility:CancelTweens(context.Library._closingDialog.Tweens)
+		if context.Library._closingDialog.Gui and context.Library._closingDialog.Gui.Parent then
+			context.Library._closingDialog.Gui:Destroy()
+		end
+		context.Library._closingDialog = nil
+	end
 
 	local library = context.Library
 	local utility = context.Utility
@@ -1607,10 +2093,24 @@ function Dialog:Show(context, options)
 	utility:Corner(card, 12)
 	utility:Stroke(card, theme.Stroke, 0.18)
 	utility:Padding(card, { X = 18, Y = 16 })
+	local cardGradient = utility:Create("UIGradient", {
+		Color = ColorSequence.new(theme.Card, theme.Background),
+		Rotation = 90,
+		Parent = card,
+	})
 
+	local headingLeft = options.Icon ~= nil and 31 or 0
+	local icon = options.Icon ~= nil and utility:CreateIcon(card, options.Icon, {
+		Position = UDim2.fromOffset(0, 2),
+		Size = UDim2.fromOffset(20, 20),
+		Color = danger and theme.Danger or theme.Accent,
+		TextSize = 13,
+		ZIndex = 102,
+	}) or nil
 	local title = utility:Create("TextLabel", {
 		Name = "Title",
-		Size = UDim2.new(1, -4, 0, 24),
+		Position = UDim2.fromOffset(headingLeft, 0),
+		Size = UDim2.new(1, -(headingLeft + 4), 0, 24),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamSemibold,
 		Text = tostring(options.Title or "MidasUI"),
@@ -1648,6 +2148,7 @@ function Dialog:Show(context, options)
 	utility:Corner(signal, 2)
 
 	local inputBox
+	local inputStroke
 	if dialogType == "Input" then
 		inputBox = utility:Create("TextBox", {
 			Name = "Input",
@@ -1666,7 +2167,7 @@ function Dialog:Show(context, options)
 			Parent = card,
 		})
 		utility:Corner(inputBox, 8)
-		utility:Stroke(inputBox, theme.Stroke, 0.5)
+		inputStroke = utility:Stroke(inputBox, theme.Stroke, 0.5)
 		utility:Padding(inputBox, { X = 10 })
 	end
 
@@ -1685,6 +2186,7 @@ function Dialog:Show(context, options)
 	local buttons = {}
 	local connections = {}
 	local buttonActions = {}
+	local tweens = {}
 	local scale = utility:Create("UIScale", {
 		Scale = 0.97,
 		Parent = card,
@@ -1712,6 +2214,15 @@ function Dialog:Show(context, options)
 		utility:Corner(button, 8)
 		utility:Stroke(button, primary and primaryColor or theme.Stroke, primary and 0.2 or 0.5)
 		table.insert(buttons, button)
+		utility:Connect(connections, button.MouseEnter, function()
+			local activeTheme = library.Theme
+			local color = primary and (danger and activeTheme.Danger or activeTheme.Accent) or activeTheme.Topbar
+			utility:TweenTracked(tweens, name .. "Hover", button, utility.Motion.Hover, { BackgroundColor3 = color })
+		end)
+		utility:Connect(connections, button.MouseLeave, function()
+			local color = primary and primaryColor or library.Theme.Background
+			utility:TweenTracked(tweens, name .. "Hover", button, utility.Motion.Hover, { BackgroundColor3 = color })
+		end)
 
 		buttonActions[name] = function()
 			if callback ~= nil then
@@ -1740,8 +2251,11 @@ function Dialog:Show(context, options)
 		Buttons = buttons,
 		Danger = danger,
 		Signal = signal,
+		Icon = icon,
+		Gradient = cardGradient,
 		Scale = scale,
 		Connections = connections,
+		Tweens = tweens,
 		Controller = controller,
 	}
 
@@ -1762,17 +2276,46 @@ function Dialog:Show(context, options)
 			end
 		end
 	end)
+	if inputBox and inputStroke then
+		utility:Connect(connections, inputBox.Focused, function()
+			inputStroke.Color = library.Theme.Accent
+			inputStroke.Transparency = 0.1
+		end)
+		utility:Connect(connections, inputBox.FocusLost, function()
+			inputStroke.Color = library.Theme.Stroke
+			inputStroke.Transparency = 0.5
+		end)
+	end
+	utility:Connect(connections, overlay.MouseButton1Click, function()
+		controller:Close()
+	end)
 
 	overlay.BackgroundTransparency = 1
 	card.Position = UDim2.fromScale(0.5, 0.48)
-	utility:Tween(overlay, utility.Motion.Standard, { BackgroundTransparency = 0.42 })
-	utility:Tween(card, utility.Motion.Reveal, { Position = UDim2.fromScale(0.5, 0.5) }, Enum.EasingStyle.Quart)
-	utility:Tween(scale, utility.Motion.Reveal, { Scale = 1 }, Enum.EasingStyle.Back)
+	utility:TweenTracked(tweens, "Overlay", overlay, utility.Motion.Overlay, { BackgroundTransparency = 0.42 })
+	utility:TweenTracked(tweens, "Card", card, utility.Motion.Reveal, { Position = UDim2.fromScale(0.5, 0.5) }, Enum.EasingStyle.Quart)
+	utility:TweenTracked(tweens, "Scale", scale, utility.Motion.Reveal, { Scale = 1 }, Enum.EasingStyle.Quart)
 	if inputBox then
 		inputBox:CaptureFocus()
 	end
 
 	return controller
+end
+
+function Dialog:Destroy(context)
+	local library = context.Library
+	self:Close(context, nil, true)
+	if library._closingDialog then
+		context.Utility:CancelTweens(library._closingDialog.Tweens)
+		if library._closingDialog.Gui and library._closingDialog.Gui.Parent then
+			library._closingDialog.Gui:Destroy()
+		end
+		library._closingDialog = nil
+	end
+	if library._dialogGui then
+		library._dialogGui:Destroy()
+		library._dialogGui = nil
+	end
 end
 
 return Dialog
@@ -1898,8 +2441,30 @@ end
 function Commands:Init(library)
 	library._commands = library._commands or {}
 	library._searchItems = library._searchItems or {}
+	library._recentCommands = library._recentCommands or {}
 	library._commandSequence = library._commandSequence or 0
 	library._searchSequence = library._searchSequence or 0
+end
+
+function Commands:RecordRecent(library, id)
+	self:Init(library)
+	for index = #library._recentCommands, 1, -1 do
+		if library._recentCommands[index] == id then
+			table.remove(library._recentCommands, index)
+		end
+	end
+	table.insert(library._recentCommands, 1, id)
+	while #library._recentCommands > 6 do
+		table.remove(library._recentCommands)
+	end
+end
+
+function Commands:RemoveRecent(library, id)
+	for index = #(library._recentCommands or {}), 1, -1 do
+		if library._recentCommands[index] == id then
+			table.remove(library._recentCommands, index)
+		end
+	end
 end
 
 function Commands:Register(library, options)
@@ -1989,6 +2554,7 @@ function Commands:Unregister(library, idOrController)
 		return false
 	end
 	library._commands[id] = nil
+	self:RemoveRecent(library, id)
 	return true
 end
 
@@ -1997,6 +2563,7 @@ function Commands:RemoveOwner(library, owner)
 	for id, command in pairs(library._commands) do
 		if command.Owner == owner then
 			library._commands[id] = nil
+			self:RemoveRecent(library, id)
 		end
 	end
 end
@@ -2023,6 +2590,7 @@ function Commands:Execute(library, idOrResult)
 			library:_Warn("Command", "Ignored command whose owner was destroyed: " .. result.Title)
 			return false, true
 		end
+		self:RecordRecent(library, result.Id)
 		library:_InvokeCallback("Command", result.Action, result.Controller)
 		return true, result.CloseOnRun
 	end
@@ -2122,19 +2690,30 @@ function Commands:Search(library, query, options)
 	options = typeof(options) == "table" and options or {}
 	query = lower(query)
 	local results = {}
+	local recentIndex = {}
+	for index, id in ipairs(library._recentCommands or {}) do
+		recentIndex[id] = index
+	end
 
 	for id, command in pairs(library._commands) do
 		if command.Owner and (command.Owner.Destroyed or command.Owner.Closed) then
 			library._commands[id] = nil
+			self:RemoveRecent(library, id)
 		else
 			local score = rank(command, query)
 			if score then
+				local recent = query == "" and recentIndex[command.Id] ~= nil
+				if recent then
+					score = score + 100 - recentIndex[command.Id]
+				end
 				table.insert(results, {
 					Id = command.Id,
 					Type = command.Type,
 					Title = command.Title,
 					Description = command.Description,
 					Category = command.Category,
+					Group = query == "" and (recent and "Recent" or "Commands") or command.Category,
+					Recent = recent,
 					Keywords = command.Keywords,
 					Score = score,
 					_Record = command,
@@ -2202,26 +2781,6 @@ function CommandPalette:Init(context)
 	end
 
 	library._paletteReady = true
-	library._paletteGlobalConnections = library._paletteGlobalConnections or {}
-	context.Utility:Connect(library._paletteGlobalConnections, UserInputService.InputBegan, function(input, processed)
-		if input.UserInputType ~= Enum.UserInputType.Keyboard then
-			return
-		end
-
-		if library:_IsCommandPaletteHotkey(input) then
-			if library._listeningKeybind then
-				return
-			end
-			if processed and not library._activePalette then
-				return
-			end
-			local focused = UserInputService:GetFocusedTextBox()
-			if focused and (not library._activePalette or focused ~= library._activePalette.SearchBox) then
-				return
-			end
-			library:ToggleCommandPalette()
-		end
-	end)
 end
 
 function CommandPalette:CreateGui(context)
@@ -2242,7 +2801,7 @@ function CommandPalette:CreateGui(context)
 	return gui
 end
 
-function CommandPalette:Close(context)
+function CommandPalette:Close(context, instant)
 	local library = context.Library
 	local palette = library._activePalette
 	if not palette then
@@ -2254,10 +2813,31 @@ function CommandPalette:Close(context)
 	end
 	context.Utility:DisconnectAll(palette.RowConnections)
 	context.Utility:DisconnectAll(palette.Connections)
-	if palette.Overlay then
-		palette.Overlay:Destroy()
-	end
 	library._activePalette = nil
+	local function destroyPalette()
+		context.Utility:CancelTweens(palette.Tweens)
+		if palette.Overlay and palette.Overlay.Parent then
+			palette.Overlay:Destroy()
+		end
+		if library._closingPalette == palette then
+			library._closingPalette = nil
+		end
+	end
+	if instant or not palette.Overlay or not palette.Overlay.Parent then
+		destroyPalette()
+		return true
+	end
+	library._closingPalette = palette
+	context.Utility:TweenTracked(palette.Tweens, "Overlay", palette.Overlay, context.Utility.Motion.Exit, {
+		BackgroundTransparency = 1,
+	}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	context.Utility:TweenTracked(palette.Tweens, "Scale", palette.Scale, context.Utility.Motion.Exit, {
+		Scale = 0.98,
+	}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	local exit = context.Utility:TweenTracked(palette.Tweens, "Card", palette.Card, context.Utility.Motion.Exit, {
+		Position = UDim2.new(0.5, 0, 0.145, 0),
+	}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	exit.Completed:Connect(destroyPalette)
 	return true
 end
 
@@ -2269,14 +2849,21 @@ function CommandPalette:SetTheme(context)
 
 	local theme = context.Library.Theme
 	palette.Card.BackgroundColor3 = theme.Card
+	palette.Gradient.Color = ColorSequence.new(theme.Card, theme.Background)
 	palette.Header.TextColor3 = theme.Text
+	context.Utility:SetIconColor(palette.Icon, theme.Accent)
 	palette.SearchBox.BackgroundColor3 = theme.Background
 	palette.SearchBox.TextColor3 = theme.Text
 	palette.SearchBox.PlaceholderColor3 = theme.MutedText
+	palette.ShortcutHint.TextColor3 = theme.Accent
 	palette.Footer.TextColor3 = theme.MutedText
 	palette.EmptyLabel.TextColor3 = theme.MutedText
+	palette.List.ScrollBarImageColor3 = theme.Accent
 	context.Utility:ApplyStrokeTheme(palette.Card, theme.Stroke)
-	context.Utility:ApplyStrokeTheme(palette.SearchBox, theme.Stroke)
+	palette.SearchStroke.Color = palette.SearchBox:IsFocused() and theme.Accent or theme.Stroke
+	for _, label in ipairs(palette.GroupLabels or {}) do
+		label.TextColor3 = theme.Accent
+	end
 	for _, row in ipairs(palette.Rows or {}) do
 		row.Button.BackgroundColor3 = theme.Background
 		row.Description.TextColor3 = theme.MutedText
@@ -2293,7 +2880,14 @@ function CommandPalette:Open(context, options)
 	end
 
 	self:Init(context)
-	self:Close(context)
+	self:Close(context, true)
+	if library._closingPalette then
+		context.Utility:CancelTweens(library._closingPalette.Tweens)
+		if library._closingPalette.Overlay and library._closingPalette.Overlay.Parent then
+			library._closingPalette.Overlay:Destroy()
+		end
+		library._closingPalette = nil
+	end
 	library:_CloseExpandedDropdown()
 	context.Tooltip:Hide(context)
 
@@ -2314,7 +2908,7 @@ function CommandPalette:Open(context, options)
 		Name = "CommandPalette",
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.16, 0),
-		Size = UDim2.fromOffset(520, 410),
+		Size = UDim2.fromOffset(540, 430),
 		BackgroundColor3 = theme.Card,
 		Active = true,
 		ZIndex = 101,
@@ -2323,9 +2917,26 @@ function CommandPalette:Open(context, options)
 	utility:Corner(card, 14)
 	utility:Stroke(card, theme.Stroke, 0.15)
 	utility:Padding(card, { X = 14, Y = 14 })
+	local gradient = utility:Create("UIGradient", {
+		Color = ColorSequence.new(theme.Card, theme.Background),
+		Rotation = 90,
+		Parent = card,
+	})
+	local scale = utility:Create("UIScale", {
+		Scale = 0.98,
+		Parent = card,
+	})
 
+	local icon = utility:CreateIcon(card, "command", {
+		Position = UDim2.fromOffset(0, 2),
+		Size = UDim2.fromOffset(19, 19),
+		Color = theme.Accent,
+		TextSize = 13,
+		ZIndex = 102,
+	})
 	local header = utility:Create("TextLabel", {
 		Name = "Header",
+		Position = UDim2.fromOffset(28, 0),
 		Size = UDim2.new(1, 0, 0, 23),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamSemibold,
@@ -2333,6 +2944,20 @@ function CommandPalette:Open(context, options)
 		TextColor3 = theme.Text,
 		TextSize = 15,
 		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 102,
+		Parent = card,
+	})
+	local shortcutHint = utility:Create("TextLabel", {
+		Name = "Shortcut",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, 2),
+		Size = UDim2.fromOffset(124, 20),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium,
+		Text = library.CommandPaletteShortcut,
+		TextColor3 = theme.Accent,
+		TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Right,
 		ZIndex = 102,
 		Parent = card,
 	})
@@ -2353,14 +2978,21 @@ function CommandPalette:Open(context, options)
 		Parent = card,
 	})
 	utility:Corner(searchBox, 9)
-	utility:Stroke(searchBox, theme.Stroke, 0.35)
+	local searchStroke = utility:Stroke(searchBox, theme.Stroke, 0.35)
 	utility:Padding(searchBox, { X = 12 })
 
-	local list = utility:Create("Frame", {
+	local list = utility:Create("ScrollingFrame", {
 		Name = "Results",
-		Position = UDim2.fromOffset(0, 82),
+		Position = UDim2.fromOffset(0, 84),
 		Size = UDim2.new(1, 0, 1, -112),
 		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		CanvasSize = UDim2.fromOffset(0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		ScrollBarThickness = 3,
+		ScrollBarImageColor3 = theme.Accent,
+		ScrollBarImageTransparency = 0.3,
 		ZIndex = 102,
 		Parent = card,
 	})
@@ -2377,6 +3009,9 @@ function CommandPalette:Open(context, options)
 		ZIndex = 103,
 		Parent = list,
 	})
+	local shortcutFooter = library.CommandPaletteShortcut == "Disabled"
+		and "Shortcut disabled"
+		or (library.CommandPaletteShortcut .. " toggle")
 	local footer = utility:Create("TextLabel", {
 		Name = "Footer",
 		AnchorPoint = Vector2.new(0, 1),
@@ -2384,7 +3019,7 @@ function CommandPalette:Open(context, options)
 		Size = UDim2.new(1, 0, 0, 20),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
-		Text = "Up/Down navigate   Enter run   Esc close   Ctrl+K toggle",
+		Text = "Up/Down navigate   Enter run   Esc close   " .. shortcutFooter,
 		TextColor3 = theme.MutedText,
 		TextSize = 11,
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -2396,16 +3031,23 @@ function CommandPalette:Open(context, options)
 		Library = library,
 		Overlay = overlay,
 		Card = card,
+		Gradient = gradient,
+		Scale = scale,
+		Icon = icon,
 		Header = header,
+		ShortcutHint = shortcutHint,
 		SearchBox = searchBox,
+		SearchStroke = searchStroke,
 		List = list,
 		EmptyLabel = emptyLabel,
 		Footer = footer,
 		Connections = {},
 		RowConnections = {},
 		Rows = {},
+		GroupLabels = {},
 		Results = {},
 		SelectedIndex = 1,
+		Tweens = {},
 	}
 	library._activePalette = palette
 
@@ -2432,16 +3074,39 @@ function CommandPalette:Open(context, options)
 		for _, row in ipairs(palette.Rows) do
 			row.Button:Destroy()
 		end
+		for _, label in ipairs(palette.GroupLabels) do
+			label:Destroy()
+		end
 		table.clear(palette.Rows)
+		table.clear(palette.GroupLabels)
 		palette.Results = context.Commands:Search(library, searchBox.Text, { IncludeItems = false })
-		while #palette.Results > 7 do
+		while #palette.Results > 6 do
 			table.remove(palette.Results)
 		end
 		emptyLabel.Visible = #palette.Results == 0
+		emptyLabel.Text = searchBox.Text == "" and "No commands registered yet" or ("No results for '" .. searchBox.Text .. "'")
 		palette.SelectedIndex = math.clamp(palette.SelectedIndex, 1, math.max(#palette.Results, 1))
 
+		local previousGroup
 		for index, result in ipairs(palette.Results) do
 			local activeTheme = library.Theme
+			local group = result.Group or result.Category
+			if group ~= previousGroup then
+				local groupLabel = utility:Create("TextLabel", {
+					Name = "Group",
+					Size = UDim2.new(1, 0, 0, 16),
+					BackgroundTransparency = 1,
+					Font = Enum.Font.GothamSemibold,
+					Text = string.upper(group),
+					TextColor3 = activeTheme.Accent,
+					TextSize = 10,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					ZIndex = 103,
+					Parent = list,
+				})
+				table.insert(palette.GroupLabels, groupLabel)
+				previousGroup = group
+			end
 			local button = utility:Create("TextButton", {
 				Name = result.Type .. "Result",
 				Size = UDim2.new(1, 0, 0, 39),
@@ -2459,7 +3124,7 @@ function CommandPalette:Open(context, options)
 				Size = UDim2.new(1, -106, 0, 17),
 				BackgroundTransparency = 1,
 				Font = Enum.Font.GothamMedium,
-				Text = result.Title,
+				Text = result.Recent and ("Recently used  " .. result.Title) or result.Title,
 				TextColor3 = activeTheme.MutedText,
 				TextSize = 12,
 				TextTruncate = Enum.TextTruncate.AtEnd,
@@ -2513,6 +3178,14 @@ function CommandPalette:Open(context, options)
 	end)
 	utility:Connect(palette.Connections, card.InputBegan, function() end)
 	utility:Connect(palette.Connections, searchBox:GetPropertyChangedSignal("Text"), refresh)
+	utility:Connect(palette.Connections, searchBox.Focused, function()
+		searchStroke.Color = library.Theme.Accent
+		searchStroke.Transparency = 0.08
+	end)
+	utility:Connect(palette.Connections, searchBox.FocusLost, function()
+		searchStroke.Color = library.Theme.Stroke
+		searchStroke.Transparency = 0.35
+	end)
 	utility:Connect(palette.Connections, UserInputService.InputBegan, function(input)
 		if library._activePalette ~= palette or input.UserInputType ~= Enum.UserInputType.Keyboard then
 			return
@@ -2531,18 +3204,31 @@ function CommandPalette:Open(context, options)
 	end)
 
 	refresh()
+	overlay.BackgroundTransparency = 1
+	card.Position = UDim2.new(0.5, 0, 0.145, 0)
+	utility:TweenTracked(palette.Tweens, "Overlay", overlay, utility.Motion.Overlay, { BackgroundTransparency = 0.52 })
+	utility:TweenTracked(palette.Tweens, "Card", card, utility.Motion.Reveal, {
+		Position = UDim2.new(0.5, 0, 0.16, 0),
+	}, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	utility:TweenTracked(palette.Tweens, "Scale", scale, utility.Motion.Reveal, { Scale = 1 }, Enum.EasingStyle.Quart)
 	searchBox:CaptureFocus()
 	return true
 end
 
 function CommandPalette:Destroy(context)
-	self:Close(context)
+	self:Close(context, true)
 	local library = context.Library
+	if library._closingPalette then
+		context.Utility:CancelTweens(library._closingPalette.Tweens)
+		if library._closingPalette.Overlay and library._closingPalette.Overlay.Parent then
+			library._closingPalette.Overlay:Destroy()
+		end
+		library._closingPalette = nil
+	end
 	if library._paletteGui then
 		library._paletteGui:Destroy()
 		library._paletteGui = nil
 	end
-	context.Utility:DisconnectAll(library._paletteGlobalConnections)
 	library._paletteReady = false
 end
 
@@ -2583,6 +3269,10 @@ function Window.new(context, options)
 		Animations = options.Animations ~= false,
 		IntroEnabled = options.Intro ~= false and options.StartupAnimation ~= false and options.Animations ~= false,
 		Tweens = {},
+		LauncherConnections = {},
+		LauncherEnabled = false,
+		LauncherOptions = typeof(options.Launcher) == "table" and table.clone(options.Launcher) or {},
+		ToggleKey = nil,
 		Template = template,
 		TemplateName = templateName,
 	}, Window)
@@ -2632,7 +3322,12 @@ function Window.new(context, options)
 		Parent = gui,
 	})
 	utility:Corner(main, 12)
-	utility:Stroke(main, theme.Stroke, 0.15)
+	local mainStroke = utility:Stroke(main, theme.Stroke, 0.08, 1)
+	local mainGradient = utility:Create("UIGradient", {
+		Color = ColorSequence.new(theme.Background, theme.Card),
+		Rotation = 45,
+		Parent = main,
+	})
 	local mainScale = utility:Create("UIScale", {
 		Scale = self.IntroEnabled and 0.965 or 1,
 		Parent = main,
@@ -2667,19 +3362,14 @@ function Window.new(context, options)
 	local icon = utility:CreateCrownMark(topbar, theme, 30)
 	icon.Position = UDim2.fromOffset(15, 13)
 	local customIcon
-	if typeof(self.Icon) == "string" and string.lower(self.Icon) ~= "crown" then
-		customIcon = utility:Create("TextLabel", {
+	if not (typeof(self.Icon) == "string" and string.lower(self.Icon) == "crown") then
+		customIcon = utility:CreateIcon(icon, self.Icon, {
 			Name = "CustomIcon",
-			Position = UDim2.fromOffset(18, 18),
-			Size = UDim2.fromOffset(11, 11),
-			BackgroundColor3 = theme.Card,
-			Font = Enum.Font.GothamBold,
-			Text = utility:IconText(self.Icon),
-			TextColor3 = theme.Highlight,
-			TextSize = 8,
-			Parent = icon,
+			Position = UDim2.fromOffset(9, 9),
+			Size = UDim2.fromOffset(12, 12),
+			Color = theme.Highlight,
+			TextSize = 9,
 		})
-		utility:Corner(customIcon, 3)
 	end
 
 	local title = utility:Create("TextLabel", {
@@ -2724,6 +3414,7 @@ function Window.new(context, options)
 		Parent = topbar,
 	})
 	utility:Corner(minimize, 8)
+	local minimizeStroke = utility:Stroke(minimize, theme.Stroke, 0.58)
 
 	local close = utility:Create("TextButton", {
 		Name = "Close",
@@ -2739,6 +3430,7 @@ function Window.new(context, options)
 		Parent = topbar,
 	})
 	utility:Corner(close, 8)
+	local closeStroke = utility:Stroke(close, theme.Stroke, 0.58)
 
 	local sidebar = utility:Create("Frame", {
 		Name = "Sidebar",
@@ -2746,6 +3438,15 @@ function Window.new(context, options)
 		Size = UDim2.new(0, 152, 1, -56),
 		BackgroundColor3 = theme.Sidebar,
 		Parent = main,
+	})
+	local sidebarDivider = utility:Create("Frame", {
+		Name = "SidebarDivider",
+		Position = UDim2.new(1, -1, 0, 10),
+		Size = UDim2.new(0, 1, 1, -20),
+		BackgroundColor3 = theme.Stroke,
+		BackgroundTransparency = 0.48,
+		BorderSizePixel = 0,
+		Parent = sidebar,
 	})
 
 	local tabList = utility:Create("Frame", {
@@ -2761,7 +3462,8 @@ function Window.new(context, options)
 		Name = "Content",
 		Position = UDim2.fromOffset(152, 56),
 		Size = UDim2.new(1, -152, 1, -56),
-		BackgroundTransparency = 1,
+		BackgroundColor3 = theme.Background,
+		BackgroundTransparency = 0.18,
 		ClipsDescendants = true,
 		Parent = main,
 	})
@@ -2783,6 +3485,8 @@ function Window.new(context, options)
 
 	self.Gui = gui
 	self.Main = main
+	self.MainStroke = mainStroke
+	self.MainGradient = mainGradient
 	self.MainScale = mainScale
 	self.SizeConstraint = sizeConstraint
 	self.Topbar = topbar
@@ -2793,6 +3497,7 @@ function Window.new(context, options)
 	self.IconLabel = icon
 	self.CustomIconLabel = customIcon
 	self.Sidebar = sidebar
+	self.SidebarDivider = sidebarDivider
 	self.TabList = tabList
 	self.Content = content
 	self.ResizeButton = resize
@@ -2802,9 +3507,9 @@ function Window.new(context, options)
 		{ main, "BackgroundColor3", "Background" },
 		{ topbar, "BackgroundColor3", "Topbar" },
 		{ sidebar, "BackgroundColor3", "Sidebar" },
+		{ sidebarDivider, "BackgroundColor3", "Stroke" },
+		{ content, "BackgroundColor3", "Background" },
 		{ accentLine, "BackgroundColor3", "Accent" },
-		{ customIcon, "BackgroundColor3", "Card" },
-		{ customIcon, "TextColor3", "Highlight" },
 		{ title, "TextColor3", "Text" },
 		{ subtitle, "TextColor3", "MutedText" },
 		{ minimize, "BackgroundColor3", "Card" },
@@ -2815,6 +3520,11 @@ function Window.new(context, options)
 	}
 
 	utility:MakeDraggable(topbar, main, self.Connections, { ClampToViewport = true })
+	utility:Connect(self.Connections, main.InputBegan, function()
+		if not self.Closed then
+			library._activeWindow = self
+		end
+	end)
 
 	local resizing = false
 	local resizeStart
@@ -2872,15 +3582,30 @@ function Window.new(context, options)
 
 	for _, button in ipairs({ minimize, close }) do
 		utility:Connect(self.Connections, button.MouseEnter, function()
-			utility:Tween(button, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Background })
+			utility:TweenTracked(self.Tweens, button.Name .. "Hover", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Background })
 		end)
 
 		utility:Connect(self.Connections, button.MouseLeave, function()
-			utility:Tween(button, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Card })
+			utility:TweenTracked(self.Tweens, button.Name .. "Hover", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Card })
+		end)
+		utility:Connect(self.Connections, button.MouseButton1Down, function()
+			utility:TweenTracked(self.Tweens, button.Name .. "Press", button, utility.Motion.Press, { BackgroundTransparency = 0.2 })
+		end)
+		utility:Connect(self.Connections, button.MouseButton1Up, function()
+			utility:TweenTracked(self.Tweens, button.Name .. "Press", button, utility.Motion.Press, { BackgroundTransparency = 0 })
 		end)
 	end
 
 	table.insert(library._windows, self)
+
+	if options.ToggleKey ~= nil then
+		self:SetToggleKey(options.ToggleKey)
+	end
+	if options.Launcher == true or typeof(options.Launcher) == "table" then
+		self:SetLauncherEnabled(true)
+	elseif options.Launcher ~= nil and options.Launcher ~= false then
+		library:_Warn("Launcher", "Launcher must be true, false, or an options table")
+	end
 
 	if self.SaveConfig then
 		library:LoadConfig()
@@ -2953,7 +3678,7 @@ function Window:_PlayIntro()
 			Enum.EasingStyle.Quart,
 			Enum.EasingDirection.Out
 		)
-		self.Utility:Tween(crest, self.Utility.Motion.Fast, { BackgroundTransparency = 1 })
+		self.Utility:TweenTracked(self.Tweens, "IntroCrestFade", crest, self.Utility.Motion.Fast, { BackgroundTransparency = 1 })
 		task.delay(self.Utility.Motion.Reveal, function()
 			if self._introToken == token then
 				self._introTargetPosition = nil
@@ -2971,7 +3696,7 @@ end
 
 function Window:_CancelIntro()
 	self._introToken = (self._introToken or 0) + 1
-	for _, key in ipairs({ "Intro", "IntroScale", "IntroWindow" }) do
+	for _, key in ipairs({ "Intro", "IntroScale", "IntroWindow", "IntroCrestFade" }) do
 		local tween = self.Tweens[key]
 		if tween then
 			tween:Cancel()
@@ -3044,6 +3769,144 @@ function Window:SelectTab(tab)
 	return self
 end
 
+function Window:_CreateLauncher()
+	if self.Closed or self.LauncherGui then
+		return self
+	end
+
+	local options = self.LauncherOptions or {}
+	local utility = self.Utility
+	local theme = self.Theme
+	local gui = utility:Create("ScreenGui", {
+		Name = "MidasUI_Launcher",
+		IgnoreGuiInset = true,
+		ResetOnSpawn = false,
+		DisplayOrder = 180,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Enabled = false,
+		Parent = utility:GetGuiParent(),
+	})
+	local position = typeof(options.Position) == "UDim2" and options.Position or UDim2.new(0, 18, 1, -18)
+	local button = utility:Create("TextButton", {
+		Name = "Launcher",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = position,
+		Size = UDim2.fromOffset(50, 50),
+		BackgroundColor3 = theme.Card,
+		Text = "",
+		AutoButtonColor = false,
+		Parent = gui,
+	})
+	utility:Corner(button, 15)
+	local buttonStroke = utility:Stroke(button, theme.Stroke, 0.12, 1)
+	local mark = utility:CreateCrownMark(button, theme, 34)
+	mark.Position = UDim2.fromOffset(8, 8)
+
+	self.LauncherGui = gui
+	self.LauncherButton = button
+	self.LauncherMark = mark
+	self.LauncherStroke = buttonStroke
+
+	local dragged = false
+	utility:MakeDraggable(button, button, self.LauncherConnections, {
+		ClampToViewport = true,
+		OnDragStart = function()
+			dragged = false
+		end,
+		OnDragMove = function(delta)
+			dragged = dragged or delta.Magnitude > 5
+		end,
+	})
+	utility:Connect(self.LauncherConnections, button.MouseButton1Click, function()
+		if dragged then
+			dragged = false
+			return
+		end
+		if self.Closed or self.Library._activeDialog then
+			return
+		end
+		self.Library._activeWindow = self
+		if self.Minimized then
+			self:Restore()
+		end
+		self:Show()
+	end)
+	utility:Connect(self.LauncherConnections, button.MouseEnter, function()
+		utility:TweenTracked(self.Tweens, "LauncherHover", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Topbar })
+	end)
+	utility:Connect(self.LauncherConnections, button.MouseLeave, function()
+		utility:TweenTracked(self.Tweens, "LauncherHover", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Card })
+	end)
+	utility:Connect(self.LauncherConnections, button.SelectionGained, function()
+		buttonStroke.Color = self.Theme.Accent
+		buttonStroke.Transparency = 0.05
+	end)
+	utility:Connect(self.LauncherConnections, button.SelectionLost, function()
+		buttonStroke.Color = self.Theme.Stroke
+		buttonStroke.Transparency = 0.12
+	end)
+	return self
+end
+
+function Window:_UpdateLauncherVisibility()
+	if self.LauncherGui then
+		self.LauncherGui.Enabled = self.LauncherEnabled and not self.Closed and (self.Hidden or self.Minimized)
+	end
+	return self
+end
+
+function Window:SetLauncherEnabled(enabled, options)
+	if self.Closed then
+		return self
+	end
+	if typeof(options) == "table" then
+		self.LauncherOptions = table.clone(options)
+		if self.LauncherButton and typeof(options.Position) == "UDim2" then
+			self.LauncherButton.Position = options.Position
+		end
+	end
+
+	self.LauncherEnabled = enabled == true
+	if self.LauncherEnabled then
+		self:_CreateLauncher()
+	end
+	self:_UpdateLauncherVisibility()
+	return self
+end
+
+function Window:SetToggleKey(value)
+	if self.Closed then
+		return self
+	end
+	local ok, display = self.Library:_SetMenuToggleKey(value, self)
+	if ok then
+		self.ToggleKey = value == false and nil or value
+		self.ToggleKeyDisplay = display
+	end
+	return self
+end
+
+function Window:ClearToggleKey()
+	if not self.Closed and self.Library._menuToggleOwner == self then
+		self.Library:_SetMenuToggleKey(false)
+	end
+	self.ToggleKey = nil
+	self.ToggleKeyDisplay = "Disabled"
+	return self
+end
+
+function Window:ToggleVisibility()
+	if self.Closed then
+		return self
+	end
+	if self.Hidden then
+		return self:Show()
+	elseif self.Minimized then
+		return self:Restore()
+	end
+	return self:Hide()
+end
+
 function Window:SetMinimized(value)
 	if self.Closed then
 		return self
@@ -3077,7 +3940,7 @@ function Window:SetMinimized(value)
 		self.ResizeButton.Visible = false
 		self.MinimizeButton.Text = "+"
 		self.Context.Tooltip:Hide(self.Context)
-		self.Context.Dialog:Close(self.Context)
+		self.Context.Dialog:Close(self.Context, nil, true)
 	else
 		targetSize = self._restoreSize or UDim2.fromOffset(self.Main.AbsoluteSize.X, 460)
 		self.Sidebar.Visible = true
@@ -3113,6 +3976,7 @@ function Window:SetMinimized(value)
 			self.ResizeButton.Visible = self.Resizeable
 		end
 	end
+	self:_UpdateLauncherVisibility()
 	return self
 end
 
@@ -3141,10 +4005,23 @@ function Window:SetTheme(theme)
 	end
 
 	self.Utility:ApplyStrokeTheme(self.Main, theme.Stroke)
+	self.MainGradient.Color = ColorSequence.new(theme.Background, theme.Card)
+	self.MainStroke.Color = theme.Stroke
+	self.MainStroke.Transparency = 0.08
 	self.Utility:ApplyCrownTheme(self.IconLabel, theme)
+	self.Utility:SetIconColor(self.CustomIconLabel, theme.Highlight)
 	self.TopbarGradient.Color = ColorSequence.new(theme.Topbar, theme.Background)
 	if self.IntroCrest then
 		self.Utility:ApplyCrownTheme(self.IntroCrest, theme)
+	end
+	if self.LauncherButton then
+		self.LauncherButton.BackgroundColor3 = theme.Card
+		self.Utility:ApplyStrokeTheme(self.LauncherButton, theme.Stroke)
+		self.Utility:ApplyCrownTheme(self.LauncherMark, theme)
+		if game:GetService("GuiService").SelectedObject == self.LauncherButton then
+			self.LauncherStroke.Color = theme.Accent
+			self.LauncherStroke.Transparency = 0.05
+		end
 	end
 
 	for _, tab in ipairs(self.Tabs) do
@@ -3160,6 +4037,7 @@ function Window:Show()
 	end
 
 	self.Hidden = false
+	self.Library._activeWindow = self
 	self._visibilityToken = (self._visibilityToken or 0) + 1
 	self.Gui.Enabled = true
 	self.Main.Visible = true
@@ -3189,6 +4067,7 @@ function Window:Show()
 		self.Main.Position = targetPosition
 		self.MainScale.Scale = 1
 	end
+	self:_UpdateLauncherVisibility()
 	return self
 end
 
@@ -3234,6 +4113,7 @@ function Window:Hide()
 	else
 		self.Gui.Enabled = false
 	end
+	self:_UpdateLauncherVisibility()
 	return self
 end
 
@@ -3322,6 +4202,12 @@ function Window:Destroy()
 
 	self.Closed = true
 	self.Destroyed = true
+	if self.Library._menuToggleOwner == self then
+		self.Library:_SetMenuToggleKey(false)
+	end
+	if self.Context.Shortcuts then
+		self.Context.Shortcuts:RemoveOwner(self.Library, self)
+	end
 	self.Library:CloseCommandPalette()
 	self.Library:_CloseExpandedDropdown()
 	self:_CancelIntro()
@@ -3335,7 +4221,7 @@ function Window:Destroy()
 		self.Context.Tooltip:Hide(self.Context)
 	end
 	if self.Context.Dialog then
-		self.Context.Dialog:Close(self.Context)
+		self.Context.Dialog:Close(self.Context, nil, true)
 	end
 
 	for _, tab in ipairs(table.clone(self.Tabs)) do
@@ -3346,6 +4232,11 @@ function Window:Destroy()
 	table.clear(self.Tabs)
 
 	self.Utility:DisconnectAll(self.Connections)
+	self.Utility:DisconnectAll(self.LauncherConnections)
+	if self.LauncherGui then
+		self.LauncherGui:Destroy()
+		self.LauncherGui = nil
+	end
 
 	for index = #self.Library._windows, 1, -1 do
 		if self.Library._windows[index] == self then
@@ -3384,6 +4275,7 @@ function Tab.new(context, window, options)
 		Icon = options.Icon or "",
 		Sections = {},
 		Connections = {},
+		Tweens = {},
 	}, Tab)
 
 	local theme = self.Theme
@@ -3402,16 +4294,12 @@ function Tab.new(context, window, options)
 	})
 	utility:Corner(button, 8)
 
-	local icon = utility:Create("TextLabel", {
+	local icon = utility:CreateIcon(button, self.Icon, {
 		Name = "Icon",
 		Position = UDim2.fromOffset(10, template.Compact and 6 or 8),
 		Size = UDim2.fromOffset(22, template.Compact and 21 or 22),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold,
-		Text = utility:IconText(self.Icon),
-		TextColor3 = theme.MutedText,
+		Color = theme.MutedText,
 		TextSize = template.Compact and 12 or 13,
-		Parent = button,
 	})
 
 	local label = utility:Create("TextLabel", {
@@ -3454,12 +4342,21 @@ function Tab.new(context, window, options)
 	self.CanvasConnection = utility:BindCanvas(page, pageList, self.CanvasPadding)
 	self._themeObjects = {
 		{ button, "BackgroundColor3", "Card" },
-		{ icon, "TextColor3", "MutedText" },
 		{ label, "TextColor3", "MutedText" },
 	}
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
 		window:SelectTab(self)
+	end)
+	utility:Connect(self.Connections, button.MouseEnter, function()
+		if window.ActiveTab ~= self then
+			utility:TweenTracked(self.Tweens, "Surface", button, utility.Motion.Hover, { BackgroundTransparency = 0.55 })
+		end
+	end)
+	utility:Connect(self.Connections, button.MouseLeave, function()
+		if window.ActiveTab ~= self then
+			utility:TweenTracked(self.Tweens, "Surface", button, utility.Motion.Hover, { BackgroundTransparency = 1 })
+		end
 	end)
 
 	return self
@@ -3483,8 +4380,10 @@ function Tab:SetActive(active)
 	end
 
 	self.Page.Visible = active
-	self.Button.BackgroundTransparency = active and 0 or 1
-	self.IconLabel.TextColor3 = active and self.Theme.Accent or self.Theme.MutedText
+	self.Utility:TweenTracked(self.Tweens, "Surface", self.Button, self.Utility.Motion.Standard, {
+		BackgroundTransparency = active and 0 or 1,
+	})
+	self.Utility:SetIconColor(self.IconLabel, active and self.Theme.Accent or self.Theme.MutedText)
 	self.Label.TextColor3 = active and self.Theme.Text or self.Theme.MutedText
 	return self
 end
@@ -3572,6 +4471,7 @@ function Tab:Destroy()
 	end
 
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Utility:DisconnectAll(self.Connections)
 
 	if self.CanvasConnection then
@@ -3651,9 +4551,13 @@ function Section.new(context, tab, options)
 	})
 	utility:Corner(frame, 10)
 	utility:Stroke(frame, theme.Stroke, 0.3)
+	local gradient = utility:Create("UIGradient", {
+		Color = ColorSequence.new(theme.Card, theme.Background),
+		Rotation = 90,
+		Parent = frame,
+	})
 	utility:Padding(frame, { X = template.SectionPadding, Y = template.SectionPadding })
 	local layout = utility:List(frame, template.SectionSpacing)
-
 	local title = utility:Create("TextLabel", {
 		Name = "Title",
 		Size = UDim2.new(1, 0, 0, compact and 18 or 20),
@@ -3665,13 +4569,27 @@ function Section.new(context, tab, options)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
 	})
+	local signal = utility:Create("Frame", {
+		Name = "Accent",
+		Position = UDim2.fromOffset(0, 3),
+		Size = UDim2.fromOffset(2, compact and 12 or 14),
+		BackgroundColor3 = theme.Accent,
+		BackgroundTransparency = 0.2,
+		BorderSizePixel = 0,
+		Parent = title,
+	})
+	utility:Corner(signal, 2)
+	utility:Padding(title, { Left = 9 })
 
 	self.Frame = frame
 	self.TitleLabel = title
 	self.Layout = layout
+	self.Gradient = gradient
+	self.Signal = signal
 	self._themeObjects = {
 		{ frame, "BackgroundColor3", "Card" },
 		{ title, "TextColor3", "Text" },
+		{ signal, "BackgroundColor3", "Accent" },
 	}
 
 	return self
@@ -3786,6 +4704,7 @@ function Section:SetTheme(theme)
 		end
 	end
 	self.Utility:ApplyStrokeTheme(self.Frame, theme.Stroke)
+	self.Gradient.Color = ColorSequence.new(theme.Card, theme.Background)
 
 	for _, element in ipairs(self.Elements) do
 		if element.SetTheme then
@@ -3890,6 +4809,8 @@ function Button.new(context, section, options)
 		Name = tostring(options.Name or options.Text or "Button"),
 		Callback = typeof(options.Callback or options.Func) == "function" and (options.Callback or options.Func) or function() end,
 		Connections = {},
+		Tweens = {},
+		Icon = options.Icon,
 		Enabled = true,
 	}, Button)
 
@@ -3910,9 +4831,22 @@ function Button.new(context, section, options)
 		Parent = section.Frame,
 	})
 	utility:Corner(button, 8)
-	utility:Stroke(button, theme.Stroke, 0.55)
+	local stroke = utility:Stroke(button, theme.Stroke, 0.55)
+	local icon
+	if self.Icon ~= nil then
+		icon = utility:CreateIcon(button, self.Icon, {
+			Position = UDim2.fromOffset(12, compact and 8 or 11),
+			Size = UDim2.fromOffset(16, 16),
+			Color = theme.Accent,
+			TextSize = 12,
+		})
+		button.TextXAlignment = Enum.TextXAlignment.Left
+		utility:Padding(button, { Left = 38, Right = 12 })
+	end
 
 	self.Instance = button
+	self.Stroke = stroke
+	self.IconLabel = icon
 	self._themeObjects = {
 		{ button, "BackgroundColor3", "Background" },
 		{ button, "TextColor3", "Text" },
@@ -3922,14 +4856,14 @@ function Button.new(context, section, options)
 		if self.Enabled == false then
 			return
 		end
-		utility:Tween(button, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Topbar })
+		utility:TweenTracked(self.Tweens, "Surface", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Topbar })
 	end)
 
 	utility:Connect(self.Connections, button.MouseLeave, function()
 		if self.Enabled == false then
 			return
 		end
-		utility:Tween(button, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Background })
+		utility:TweenTracked(self.Tweens, "Surface", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Background })
 	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
@@ -3943,14 +4877,24 @@ function Button.new(context, section, options)
 		if self.Enabled == false then
 			return
 		end
-		utility:Tween(button, utility.Motion.Fast, { BackgroundTransparency = 0.18 })
+		utility:TweenTracked(self.Tweens, "Press", button, utility.Motion.Press, { BackgroundTransparency = 0.18 })
 	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Up, function()
 		if self.Enabled == false then
 			return
 		end
-		utility:Tween(button, utility.Motion.Fast, { BackgroundTransparency = 0 })
+		utility:TweenTracked(self.Tweens, "Press", button, utility.Motion.Press, { BackgroundTransparency = 0 })
+	end)
+	utility:Connect(self.Connections, button.SelectionGained, function()
+		if self.Enabled ~= false then
+			stroke.Color = self.Theme.Accent
+			stroke.Transparency = 0.08
+		end
+	end)
+	utility:Connect(self.Connections, button.SelectionLost, function()
+		stroke.Color = self.Theme.Stroke
+		stroke.Transparency = 0.55
 	end)
 
 	self.Library:_BindElement(self, options)
@@ -4035,6 +4979,11 @@ function Button:SetTheme(theme)
 		object[property] = theme[key]
 	end
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
+	self.Utility:SetIconColor(self.IconLabel, theme.Accent)
+	if game:GetService("GuiService").SelectedObject == self.Instance then
+		self.Stroke.Color = theme.Accent
+		self.Stroke.Transparency = 0.08
+	end
 	self:SetEnabled(self.Enabled)
 	return self
 end
@@ -4045,6 +4994,7 @@ function Button:Destroy()
 	end
 
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Library:_UnregisterDependencies(self)
 	self.Utility:DisconnectAll(self.Connections)
 	if self.Instance then
@@ -4078,6 +5028,7 @@ function Toggle.new(context, section, options)
 		Value = options.Default == true,
 		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
+		Tweens = {},
 		Enabled = true,
 	}, Toggle)
 
@@ -4152,7 +5103,7 @@ function Toggle.new(context, section, options)
 			return
 		end
 
-		utility:Tween(label, utility.Motion.Fast, { TextColor3 = self.Theme.Accent })
+		utility:TweenTracked(self.Tweens, "Label", label, utility.Motion.Hover, { TextColor3 = self.Theme.Accent })
 	end)
 
 	utility:Connect(self.Connections, row.MouseLeave, function()
@@ -4160,7 +5111,7 @@ function Toggle.new(context, section, options)
 			return
 		end
 
-		utility:Tween(label, utility.Motion.Fast, { TextColor3 = self.Theme.Text })
+		utility:TweenTracked(self.Tweens, "Label", label, utility.Motion.Hover, { TextColor3 = self.Theme.Text })
 	end)
 
 	context.Flags:Register(self.Library, self.Flag, self)
@@ -4193,10 +5144,10 @@ function Toggle:SetValue(value, fireCallback)
 	end
 
 	local theme = self.Theme
-	self.Utility:Tween(self.Track, self.Utility.Motion.Standard, {
+	self.Utility:TweenTracked(self.Tweens, "Track", self.Track, self.Utility.Motion.Toggle, {
 		BackgroundColor3 = self.Value and theme.Accent or theme.Background,
 	})
-	self.Utility:Tween(self.Knob, self.Utility.Motion.Standard, {
+	self.Utility:TweenTracked(self.Tweens, "Knob", self.Knob, self.Utility.Motion.Toggle, {
 		Position = self.Value and UDim2.fromOffset(23, 3) or UDim2.fromOffset(3, 3),
 		BackgroundColor3 = self.Value and theme.Text or theme.MutedText,
 	})
@@ -4299,6 +5250,7 @@ function Toggle:Destroy()
 	end
 
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)
@@ -4495,7 +5447,7 @@ function Slider.new(context, section, options)
 			return
 		end
 
-		utility:Tween(knob, utility.Motion.Fast, { Size = UDim2.fromOffset(18, 18) })
+		utility:TweenTracked(self.Tweens, "KnobSize", knob, utility.Motion.Hover, { Size = UDim2.fromOffset(18, 18) })
 	end)
 
 	utility:Connect(self.Connections, bar.MouseLeave, function()
@@ -4503,7 +5455,7 @@ function Slider.new(context, section, options)
 			return
 		end
 
-		utility:Tween(knob, utility.Motion.Fast, { Size = UDim2.fromOffset(16, 16) })
+		utility:TweenTracked(self.Tweens, "KnobSize", knob, utility.Motion.Hover, { Size = UDim2.fromOffset(16, 16) })
 	end)
 
 	utility:Connect(self.Connections, UserInputService.InputChanged, function(input)
@@ -4523,7 +5475,7 @@ function Slider.new(context, section, options)
 		if self.Dragging and (isMouseRelease or input == self.DragInput) then
 			self.Dragging = false
 			self.DragInput = nil
-			utility:Tween(knob, utility.Motion.Fast, { Size = UDim2.fromOffset(16, 16) })
+			utility:TweenTracked(self.Tweens, "KnobSize", knob, utility.Motion.Hover, { Size = UDim2.fromOffset(16, 16) })
 		end
 	end)
 
@@ -4596,7 +5548,7 @@ function Slider:SetEnabled(enabled)
 	if not self.Enabled then
 		self.Dragging = false
 		self.DragInput = nil
-		self.Utility:Tween(self.Knob, self.Utility.Motion.Fast, { Size = UDim2.fromOffset(16, 16) })
+		self.Utility:TweenTracked(self.Tweens, "KnobSize", self.Knob, self.Utility.Motion.Hover, { Size = UDim2.fromOffset(16, 16) })
 	end
 	return self
 end
@@ -4746,6 +5698,8 @@ function Dropdown.new(context, section, options)
 		Connections = {},
 		OptionConnections = {},
 		InteractionConnections = {},
+		Tweens = {},
+		Icon = options.Icon,
 		Expanded = false,
 		Enabled = true,
 		MaxVisibleOptions = math.clamp(tonumber(options.MaxVisibleOptions) or 5, 1, 20),
@@ -4803,12 +5757,23 @@ function Dropdown.new(context, section, options)
 		Parent = frame,
 	})
 	utility:Corner(button, 8)
-	utility:Stroke(button, theme.Stroke, 0.5)
+	local buttonStroke = utility:Stroke(button, theme.Stroke, 0.5)
+	local buttonIcon
+	local valueLeft = 10
+	if self.Icon ~= nil then
+		buttonIcon = utility:CreateIcon(button, self.Icon, {
+			Position = UDim2.fromOffset(10, compact and 7 or 9),
+			Size = UDim2.fromOffset(16, 16),
+			Color = theme.Accent,
+			TextSize = 12,
+		})
+		valueLeft = 34
+	end
 
 	local valueLabel = utility:Create("TextLabel", {
 		Name = "Value",
-		Position = UDim2.fromOffset(10, 0),
-		Size = UDim2.new(1, -42, 1, 0),
+		Position = UDim2.fromOffset(valueLeft, 0),
+		Size = UDim2.new(1, -(valueLeft + 32), 1, 0),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
 		TextColor3 = theme.MutedText,
@@ -4863,7 +5828,7 @@ function Dropdown.new(context, section, options)
 		Parent = list,
 	})
 	utility:Corner(searchBox, 6)
-	utility:Stroke(searchBox, theme.Stroke, 0.5)
+	local searchStroke = utility:Stroke(searchBox, theme.Stroke, 0.5)
 	utility:Padding(searchBox, { X = 9 })
 
 	local scroll = utility:Create("ScrollingFrame", {
@@ -4898,10 +5863,13 @@ function Dropdown.new(context, section, options)
 	self.Instance = frame
 	self.Label = label
 	self.Button = button
+	self.ButtonStroke = buttonStroke
+	self.IconLabel = buttonIcon
 	self.ValueLabel = valueLabel
 	self.Arrow = arrow
 	self.List = list
 	self.SearchBox = searchBox
+	self.SearchStroke = searchStroke
 	self.Scroll = scroll
 	self.OptionLayout = optionLayout
 	self.EmptyLabel = emptyLabel
@@ -4915,6 +5883,14 @@ function Dropdown.new(context, section, options)
 	utility:Connect(self.Connections, searchBox:GetPropertyChangedSignal("Text"), function()
 		self:_FilterOptions(searchBox.Text)
 	end)
+	utility:Connect(self.Connections, searchBox.Focused, function()
+		searchStroke.Color = self.Theme.Accent
+		searchStroke.Transparency = 0.1
+	end)
+	utility:Connect(self.Connections, searchBox.FocusLost, function()
+		searchStroke.Color = self.Theme.Stroke
+		searchStroke.Transparency = 0.5
+	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
 		if self.Enabled == false then
@@ -4922,6 +5898,18 @@ function Dropdown.new(context, section, options)
 		end
 
 		self:SetExpanded(not self.Expanded)
+	end)
+	utility:Connect(self.Connections, button.MouseEnter, function()
+		if self.Enabled then
+			utility:TweenTracked(self.Tweens, "Button", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Card })
+			buttonStroke.Color = self.Theme.Accent
+		end
+	end)
+	utility:Connect(self.Connections, button.MouseLeave, function()
+		if self.Enabled and not self.Expanded then
+			utility:TweenTracked(self.Tweens, "Button", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Background })
+			buttonStroke.Color = self.Theme.Stroke
+		end
 	end)
 
 	utility:Connect(self.Connections, button:GetPropertyChangedSignal("AbsolutePosition"), function()
@@ -4971,7 +5959,7 @@ function Dropdown:_GetOverlayGui()
 	return gui
 end
 
-function Dropdown:_PositionOverlay()
+function Dropdown:_PositionOverlay(heightOverride)
 	if not self.Expanded or not self.List or not self.List.Parent then
 		return
 	end
@@ -4979,7 +5967,7 @@ function Dropdown:_PositionOverlay()
 	local camera = workspace.CurrentCamera
 	local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
 	local width = math.max(self.Button.AbsoluteSize.X, 1)
-	local height = self.List.Size.Y.Offset
+	local height = heightOverride or self.List.Size.Y.Offset
 	local margin = 8
 	local x = math.clamp(self.Button.AbsolutePosition.X, margin, math.max(margin, viewport.X - width - margin))
 	local below = self.Button.AbsolutePosition.Y + self.Button.AbsoluteSize.Y + 6
@@ -5007,17 +5995,31 @@ function Dropdown:_ResizeExpanded(instant)
 
 	self.Instance.Size = UDim2.new(1, 0, 0, self.BaseHeight)
 
+	local tween
 	if instant then
+		local current = self.Tweens.Expand
+		if current then
+			current:Cancel()
+			self.Tweens.Expand = nil
+		end
 		self.List.Size = targetSize
 	else
-		local style = self.Expanded and Enum.EasingStyle.Back or Enum.EasingStyle.Quad
 		self.List.Size = UDim2.fromOffset(width, self.List.Size.Y.Offset)
-		self.Utility:Tween(self.List, self.Utility.Motion.Standard, { Size = targetSize }, style)
+		tween = self.Utility:TweenTracked(
+			self.Tweens,
+			"Expand",
+			self.List,
+			self.Utility.Motion.Overlay,
+			{ Size = targetSize },
+			self.Expanded and Enum.EasingStyle.Quart or Enum.EasingStyle.Quad,
+			self.Expanded and Enum.EasingDirection.Out or Enum.EasingDirection.In
+		)
 	end
 
 	if self.Expanded then
-		self:_PositionOverlay()
+		self:_PositionOverlay(height)
 	end
+	return tween
 end
 
 function Dropdown:_SetKeyboardSelection(index)
@@ -5181,6 +6183,8 @@ function Dropdown:SetExpanded(value, instant)
 	if expanded and self.Library._expandedDropdown and self.Library._expandedDropdown ~= self then
 		self.Library._expandedDropdown:SetExpanded(false, true)
 	end
+	self._expansionToken = (self._expansionToken or 0) + 1
+	local token = self._expansionToken
 	self.Expanded = expanded
 	if self.Expanded then
 		self.Library._expandedDropdown = self
@@ -5209,13 +6213,39 @@ function Dropdown:SetExpanded(value, instant)
 		self:_FilterOptions("")
 	end
 
-	self.Arrow.Text = self.Expanded and "^" or "v"
+	self.Arrow.Text = "v"
+	if instant then
+		self.Arrow.Rotation = self.Expanded and 180 or 0
+	else
+		self.Utility:TweenTracked(self.Tweens, "Arrow", self.Arrow, self.Utility.Motion.Standard, {
+			Rotation = self.Expanded and 180 or 0,
+		})
+	end
+	self.ButtonStroke.Color = self.Expanded and self.Theme.Accent or self.Theme.Stroke
+	if not self.Expanded then
+		self.Utility:TweenTracked(self.Tweens, "Button", self.Button, self.Utility.Motion.Hover, {
+			BackgroundColor3 = self.Theme.Background,
+		})
+	end
 	self.Scroll.CanvasPosition = Vector2.new(0, 0)
+	if self.Expanded and not instant then
+		self.List.Size = UDim2.fromOffset(math.max(self.Button.AbsoluteSize.X, self.Instance.AbsoluteSize.X, 1), 0)
+	end
 	self:_ResizeExpanded(instant)
 	if not self.Expanded then
-		self.List.Visible = false
-		self.List.Parent = self.Instance
-		self.List.Position = UDim2.fromOffset(0, self.ListTop)
+		local function finalizeClose()
+			if self._expansionToken ~= token or self.Expanded or not self.List then
+				return
+			end
+			self.List.Visible = false
+			self.List.Parent = self.Instance
+			self.List.Position = UDim2.fromOffset(0, self.ListTop)
+		end
+		if instant then
+			finalizeClose()
+		else
+			task.delay(self.Utility.Motion.Overlay, finalizeClose)
+		end
 	end
 	return self
 end
@@ -5375,6 +6405,7 @@ function Dropdown:SetTheme(theme)
 	self.Button.BackgroundColor3 = theme.Background
 	self.ValueLabel.TextColor3 = theme.MutedText
 	self.Arrow.TextColor3 = theme.Accent
+	self.Utility:SetIconColor(self.IconLabel, theme.Accent)
 	self.List.BackgroundColor3 = theme.Background
 	self.SearchBox.BackgroundColor3 = theme.Card
 	self.SearchBox.TextColor3 = theme.Text
@@ -5388,6 +6419,10 @@ function Dropdown:SetTheme(theme)
 
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
 	self.Utility:ApplyStrokeTheme(self.List, theme.Stroke)
+	self.ButtonStroke.Color = self.Expanded and theme.Accent or theme.Stroke
+	if self.SearchBox:IsFocused() then
+		self.SearchStroke.Color = theme.Accent
+	end
 	self:SetValue(self.Value, false)
 	self:SetEnabled(self.Enabled)
 	return self
@@ -5400,6 +6435,7 @@ function Dropdown:Destroy()
 
 	self:SetExpanded(false, true)
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self:_EndInteraction()
@@ -5443,6 +6479,7 @@ function Input.new(context, section, options)
 		Placeholder = tostring(options.Placeholder or ""),
 		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
+		Tweens = {},
 		Enabled = true,
 	}, Input)
 
@@ -5486,12 +6523,13 @@ function Input.new(context, section, options)
 		Parent = frame,
 	})
 	utility:Corner(box, 8)
-	utility:Stroke(box, theme.Stroke, 0.5)
+	local boxStroke = utility:Stroke(box, theme.Stroke, 0.5)
 	utility:Padding(box, { X = 10 })
 
 	self.Instance = frame
 	self.Label = label
 	self.Box = box
+	self.BoxStroke = boxStroke
 
 	utility:Connect(self.Connections, box.FocusLost, function()
 		if self.Enabled == false then
@@ -5510,11 +6548,15 @@ function Input.new(context, section, options)
 			return
 		end
 
-		utility:Tween(box, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Topbar })
+		utility:TweenTracked(self.Tweens, "Focus", box, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Topbar })
+		boxStroke.Color = self.Theme.Accent
+		boxStroke.Transparency = 0.1
 	end)
 
 	utility:Connect(self.Connections, box.FocusLost, function()
-		utility:Tween(box, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Background })
+		utility:TweenTracked(self.Tweens, "Focus", box, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Background })
+		boxStroke.Color = self.Theme.Stroke
+		boxStroke.Transparency = 0.5
 	end)
 
 	context.Flags:Register(self.Library, self.Flag, self)
@@ -5642,6 +6684,9 @@ function Input:SetTheme(theme)
 	self.Box.TextColor3 = theme.Text
 	self.Box.PlaceholderColor3 = theme.MutedText
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
+	if self.Box:IsFocused() then
+		self.BoxStroke.Color = theme.Accent
+	end
 	self:SetEnabled(self.Enabled)
 	return self
 end
@@ -5652,6 +6697,7 @@ function Input:Destroy()
 	end
 
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)
@@ -5760,11 +6806,12 @@ function Keybind.new(context, section, options)
 		Parent = row,
 	})
 	utility:Corner(button, 8)
-	utility:Stroke(button, theme.Stroke, 0.45)
+	local buttonStroke = utility:Stroke(button, theme.Stroke, 0.45)
 
 	self.Instance = row
 	self.Label = label
 	self.Button = button
+	self.ButtonStroke = buttonStroke
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
 		if self.Enabled == false then
@@ -5840,6 +6887,8 @@ function Keybind:StartListening()
 
 	self.Button.Text = "..."
 	self.Button.TextColor3 = self.Theme.Accent
+	self.ButtonStroke.Color = self.Theme.Accent
+	self.ButtonStroke.Transparency = 0.08
 	return self
 end
 
@@ -5859,6 +6908,8 @@ function Keybind:StopListening()
 	end
 
 	self:Refresh()
+	self.ButtonStroke.Color = self.Theme.Stroke
+	self.ButtonStroke.Transparency = 0.45
 	return self
 end
 
@@ -5997,6 +7048,9 @@ function Keybind:SetTheme(theme)
 	self.Button.BackgroundColor3 = theme.Background
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
 	self:Refresh()
+	if self.Listening then
+		self.ButtonStroke.Color = theme.Accent
+	end
 	return self
 end
 
@@ -6311,6 +7365,7 @@ function ProgressBar.new(context, section, options)
 		Value = clampValue(options.Default or options.Value, min, max),
 		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
+		Tweens = {},
 		Enabled = true,
 	}, ProgressBar)
 
@@ -6401,9 +7456,10 @@ function ProgressBar:SetValue(value, fireCallback, instant)
 	local percent = formatPercent(ratio * 100)
 	self.StatusLabel.Text = self.Status ~= "" and (self.Status .. "  " .. percent) or percent
 	if instant then
+		self.Utility:CancelTweens(self.Tweens)
 		self.Fill.Size = UDim2.fromScale(ratio, 1)
 	else
-		self.Utility:Tween(self.Fill, self.Utility.Motion.Standard, { Size = UDim2.fromScale(ratio, 1) })
+		self.Utility:TweenTracked(self.Tweens, "Fill", self.Fill, self.Utility.Motion.Standard, { Size = UDim2.fromScale(ratio, 1) })
 	end
 
 	if changed and fireCallback ~= false then
@@ -6495,6 +7551,7 @@ function ProgressBar:Destroy()
 		return self
 	end
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)
@@ -6545,16 +7602,12 @@ function StatCard.new(context, section, options)
 	})
 	utility:Corner(frame, 9)
 	utility:Stroke(frame, theme.Stroke, 0.55)
-	local icon = utility:Create("TextLabel", {
+	local icon = utility:CreateIcon(frame, options.Icon, {
 		Name = "Icon",
 		Position = UDim2.fromOffset(12, 0),
 		Size = UDim2.fromOffset(options.Icon and 24 or 0, height),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold,
-		Text = options.Icon and utility:IconText(options.Icon) or "",
-		TextColor3 = theme.Accent,
+		Color = theme.Accent,
 		TextSize = 14,
-		Parent = frame,
 	})
 	local left = options.Icon and 43 or 12
 	local label = utility:Create("TextLabel", {
@@ -6630,7 +7683,7 @@ function StatCard:SetIcon(icon)
 		return self
 	end
 	self.Icon = icon
-	self.IconLabel.Text = icon and self.Utility:IconText(icon) or ""
+	self.Utility:SetIcon(self.IconLabel, icon, self.Theme.Accent)
 	return self
 end
 
@@ -6642,7 +7695,7 @@ function StatCard:SetEnabled(enabled)
 	local transparency = self.Enabled and 0 or 0.45
 	self.Label.TextTransparency = transparency
 	self.ValueLabel.TextTransparency = transparency
-	self.IconLabel.TextTransparency = transparency
+	self.Utility:SetIconTransparency(self.IconLabel, transparency)
 	self.Instance.BackgroundTransparency = self.Enabled and 0 or 0.32
 	return self
 end
@@ -6684,7 +7737,7 @@ function StatCard:SetTheme(theme)
 	end
 	self.Theme = theme
 	self.Instance.BackgroundColor3 = theme.Background
-	self.IconLabel.TextColor3 = theme.Accent
+	self.Utility:SetIconColor(self.IconLabel, theme.Accent)
 	self.Label.TextColor3 = theme.MutedText
 	self.ValueLabel.TextColor3 = theme.Text
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
@@ -6989,10 +8042,20 @@ function Callout.new(context, section, options)
 		Parent = frame,
 	})
 	utility:Corner(accent, 3)
+	local icon
+	local left = self.Icon and 39 or 13
+	if self.Icon then
+		icon = utility:CreateIcon(frame, self.Icon, {
+			Position = UDim2.fromOffset(13, compact and 10 or 13),
+			Size = UDim2.fromOffset(18, 18),
+			Color = theme.Accent,
+			TextSize = 13,
+		})
+	end
 	local title = utility:Create("TextLabel", {
 		Name = "Title",
-		Position = UDim2.fromOffset(13, compact and 7 or 9),
-		Size = UDim2.new(1, -24, 0, 18),
+		Position = UDim2.fromOffset(left, compact and 7 or 9),
+		Size = UDim2.new(1, -(left + 11), 0, 18),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamSemibold,
 		Text = self.Name,
@@ -7003,8 +8066,8 @@ function Callout.new(context, section, options)
 	})
 	local content = utility:Create("TextLabel", {
 		Name = "Content",
-		Position = UDim2.fromOffset(13, compact and 29 or 33),
-		Size = UDim2.new(1, -24, 1, compact and -32 or -38),
+		Position = UDim2.fromOffset(left, compact and 29 or 33),
+		Size = UDim2.new(1, -(left + 11), 1, compact and -32 or -38),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
 		Text = self.Content,
@@ -7018,6 +8081,7 @@ function Callout.new(context, section, options)
 
 	self.Instance = frame
 	self.Accent = accent
+	self.IconLabel = icon
 	self.TitleLabel = title
 	self.ContentLabel = content
 	self:SetType(self.Type)
@@ -7042,6 +8106,7 @@ function Callout:SetType(value)
 	end
 	self.Type = normalizeType(value)
 	self.Accent.BackgroundColor3 = self:_color()
+	self.Utility:SetIconColor(self.IconLabel, self:_color())
 	return self
 end
 
@@ -7084,6 +8149,7 @@ function Callout:SetEnabled(enabled)
 	self.TitleLabel.TextTransparency = transparency
 	self.ContentLabel.TextTransparency = transparency
 	self.Accent.BackgroundTransparency = self.Enabled and 0 or 0.5
+	self.Utility:SetIconTransparency(self.IconLabel, transparency)
 	self.Instance.BackgroundTransparency = self.Enabled and 0 or 0.35
 	return self
 end
@@ -7127,6 +8193,7 @@ function Callout:SetTheme(theme)
 	self.TitleLabel.TextColor3 = theme.Text
 	self.ContentLabel.TextColor3 = theme.MutedText
 	self.Accent.BackgroundColor3 = self:_color()
+	self.Utility:SetIconColor(self.IconLabel, self:_color())
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
 	return self:SetEnabled(self.Enabled)
 end
@@ -7354,6 +8421,7 @@ local Config = requireModule("Core/Config")
 local Notify = requireModule("Core/Notify")
 local Tooltip = requireModule("Core/Tooltip")
 local Keybinds = requireModule("Core/Keybinds")
+local Shortcuts = requireModule("Core/Shortcuts")
 local Dialog = requireModule("Core/Dialog")
 local Templates = requireModule("Core/Templates")
 local Commands = requireModule("Core/Commands")
@@ -7365,7 +8433,7 @@ if Icons and Icons.Map then
 end
 
 local MidasUI = {
-	Version = "1.8.0",
+	Version = "1.9.0",
 	Flags = {},
 	Keybinds = {},
 	Themes = Theme.Registry,
@@ -7377,6 +8445,9 @@ local MidasUI = {
 	_dependencies = {},
 	_themeCallbacks = {},
 	_themeCallbackSequence = 0,
+	_shortcuts = {},
+	_shortcutSequence = 0,
+	_recentCommands = {},
 	_debug = false,
 	_warnings = {},
 	_warningCategories = {},
@@ -7384,6 +8455,11 @@ local MidasUI = {
 	_configFile = "config.json",
 	_windowSettings = {},
 	_destroyed = false,
+	_paletteShortcutValue = "Ctrl+K",
+	_paletteShortcutDisabled = false,
+	_menuToggleValue = nil,
+	CommandPaletteShortcut = "Ctrl+K",
+	MenuToggleShortcut = "Disabled",
 	CommandPaletteKeyCode = Enum.KeyCode.K,
 }
 
@@ -7396,6 +8472,7 @@ local Context = {
 	Notify = Notify,
 	Tooltip = Tooltip,
 	Keybinds = Keybinds,
+	Shortcuts = Shortcuts,
 	Dialog = Dialog,
 	Templates = Templates,
 	Commands = Commands,
@@ -7460,11 +8537,7 @@ function MidasUI:_InvokeCallback(category, callback, ...)
 	end)
 end
 
-function MidasUI:GetDebugState()
-	if not self._debug then
-		return nil
-	end
-
+function MidasUI:GetRuntimeReport()
 	local flagCount = 0
 	for _ in pairs(self.Flags) do
 		flagCount = flagCount + 1
@@ -7502,10 +8575,23 @@ function MidasUI:GetDebugState()
 		"OpenCommandPalette",
 		"CloseCommandPalette",
 		"ToggleCommandPalette",
+		"SetCommandPaletteShortcut",
+		"ClearCommandPaletteShortcut",
+		"SetMenuToggleKey",
+		"ClearMenuToggleKey",
+		"RegisterIcon",
+		"RegisterIcons",
+		"GetRuntimeReport",
+		"RunSelfTest",
+		"PrintRuntimeReport",
+		"DestroyAllWindows",
+		"IsLoaded",
+		"Unload",
 		"OnThemeChanged",
 	}) do
 		publicAPIs[method] = typeof(self[method]) == "function"
 	end
+	local shortcuts = Shortcuts:GetState(self)
 
 	return {
 		Version = self.Version,
@@ -7515,6 +8601,12 @@ function MidasUI:GetDebugState()
 		KeybindCount = keybindCount,
 		CommandCount = commandCount,
 		SearchItemCount = searchItemCount,
+		ShortcutCount = #shortcuts,
+		Shortcuts = shortcuts,
+		ShortcutListenerReady = self._shortcutsReady == true,
+		RecentCommandCount = #(self._recentCommands or {}),
+		CommandPaletteShortcut = self.CommandPaletteShortcut,
+		MenuToggleShortcut = self.MenuToggleShortcut,
 		DependencyCount = #self._dependencies,
 		NotificationCount = self._notifications and #self._notifications or 0,
 		HasActiveDialog = self._activeDialog ~= nil,
@@ -7531,6 +8623,13 @@ function MidasUI:GetDebugState()
 	}
 end
 
+function MidasUI:GetDebugState()
+	if not self._debug then
+		return nil
+	end
+	return self:GetRuntimeReport()
+end
+
 function MidasUI:RegisterTheme(name, values)
 	local ok, err = Theme:Register(name, values)
 	if not ok then
@@ -7540,6 +8639,28 @@ function MidasUI:RegisterTheme(name, values)
 
 	self.Themes = Theme.Registry
 	return true, name
+end
+
+function MidasUI:RegisterIcon(name, definition)
+	local ok, result = Utility:RegisterIcon(name, definition)
+	if not ok then
+		self:_Warn("Icon", result)
+	end
+	return ok, result
+end
+
+function MidasUI:RegisterIcons(definitions)
+	if typeof(definitions) ~= "table" then
+		self:_Warn("Icon", "RegisterIcons expected a table")
+		return false, "Icon definitions must be a table"
+	end
+	for name, definition in pairs(definitions) do
+		local ok, err = self:RegisterIcon(name, definition)
+		if not ok then
+			return false, err
+		end
+	end
+	return true
 end
 
 function MidasUI:GetTemplate(nameOrTemplate)
@@ -7594,6 +8715,119 @@ function MidasUI:SetTheme(nameOrTheme)
 	return valid, themeName
 end
 
+function MidasUI:_EnsureShortcuts()
+	Shortcuts:Init(Context)
+	if not self._paletteShortcutDisabled and not self._shortcuts.command_palette then
+		Shortcuts:Set(self, "command_palette", self._paletteShortcutValue, function()
+			self:ToggleCommandPalette()
+		end, { Priority = 100 })
+	end
+	if self._menuToggleValue and not self._shortcuts.menu_toggle then
+		Shortcuts:Set(self, "menu_toggle", self._menuToggleValue, function()
+			local window = self._menuToggleOwner or self._activeWindow
+			if window and not window.Closed then
+				window:ToggleVisibility()
+			end
+		end, { Priority = 80, Owner = self._menuToggleOwner })
+	end
+end
+
+function MidasUI:_RefreshPaletteShortcutHint()
+	local palette = self._activePalette
+	if not palette then
+		return
+	end
+	if palette.ShortcutHint then
+		palette.ShortcutHint.Text = self.CommandPaletteShortcut
+	end
+	if palette.Footer then
+		local hint = self.CommandPaletteShortcut == "Disabled"
+			and "Shortcut disabled"
+			or (self.CommandPaletteShortcut .. " toggle")
+		palette.Footer.Text = "Up/Down navigate   Enter run   Esc close   " .. hint
+	end
+end
+
+function MidasUI:SetCommandPaletteShortcut(value)
+	if value == nil or value == false then
+		self._paletteShortcutDisabled = true
+		self._paletteShortcutValue = nil
+		self.CommandPaletteShortcut = "Disabled"
+		Shortcuts:Set(self, "command_palette", false)
+		self:_RefreshPaletteShortcutHint()
+		return true, self.CommandPaletteShortcut
+	end
+
+	local descriptor, err = Shortcuts:Normalize(value)
+	if not descriptor then
+		self:_Warn("Shortcut", "Command palette shortcut was not changed: " .. tostring(err))
+		return false, err
+	end
+	if self.MenuToggleShortcut ~= "Disabled"
+		and self.MenuToggleShortcut == Shortcuts:Format(descriptor) then
+		local message = "Command palette shortcut conflicts with the menu toggle shortcut"
+		self:_Warn("Shortcut", message)
+		return false, message
+	end
+	self._paletteShortcutDisabled = false
+	self._paletteShortcutValue = descriptor
+	local ok, display = Shortcuts:Set(self, "command_palette", descriptor, function()
+		self:ToggleCommandPalette()
+	end, { Priority = 100 })
+	if ok then
+		self.CommandPaletteShortcut = display
+		self.CommandPaletteKeyCode = descriptor.KeyCode
+		self:_RefreshPaletteShortcutHint()
+	end
+	return ok, display
+end
+
+function MidasUI:ClearCommandPaletteShortcut()
+	return self:SetCommandPaletteShortcut(false)
+end
+
+function MidasUI:_SetMenuToggleKey(value, owner)
+	if value == nil or value == false then
+		self._menuToggleValue = nil
+		self._menuToggleOwner = nil
+		self.MenuToggleShortcut = "Disabled"
+		Shortcuts:Set(self, "menu_toggle", false)
+		return true, self.MenuToggleShortcut
+	end
+
+	local descriptor, err = Shortcuts:Normalize(value)
+	if not descriptor then
+		self:_Warn("Shortcut", "Menu toggle shortcut was not changed: " .. tostring(err))
+		return false, err
+	end
+	if not self._paletteShortcutDisabled
+		and self.CommandPaletteShortcut == Shortcuts:Format(descriptor) then
+		local message = "Menu toggle shortcut conflicts with the command palette shortcut"
+		self:_Warn("Shortcut", message)
+		return false, message
+	end
+	self._menuToggleValue = descriptor
+	self._menuToggleOwner = owner
+	local ok, display = Shortcuts:Set(self, "menu_toggle", descriptor, function()
+		local window = owner or self._activeWindow
+		if window and not window.Closed then
+			window:ToggleVisibility()
+		end
+	end, { Priority = 80, Owner = owner })
+	if ok then
+		self.MenuToggleShortcut = display
+	end
+	return ok, display
+end
+
+function MidasUI:SetMenuToggleKey(value)
+	return self:_SetMenuToggleKey(value, nil)
+end
+
+function MidasUI:ClearMenuToggleKey()
+	return self:_SetMenuToggleKey(false)
+end
+
 function MidasUI:CreateWindow(options)
 	if options ~= nil and typeof(options) ~= "table" then
 		self:_Warn("API", "CreateWindow expected an options table")
@@ -7602,6 +8836,7 @@ function MidasUI:CreateWindow(options)
 
 	options = options or {}
 	self._destroyed = false
+	self:_EnsureShortcuts()
 	self:SetTheme(options.Theme or self.ThemeName)
 	CommandPalette:Init(Context)
 	local window = Context.Window.new(Context, options)
@@ -7610,13 +8845,8 @@ function MidasUI:CreateWindow(options)
 end
 
 function MidasUI:_IsCommandPaletteHotkey(input)
-	if not input or input.KeyCode ~= self.CommandPaletteKeyCode then
-		return false
-	end
-
-	local userInputService = game:GetService("UserInputService")
-	return userInputService:IsKeyDown(Enum.KeyCode.LeftControl)
-		or userInputService:IsKeyDown(Enum.KeyCode.RightControl)
+	local shortcut = self._shortcuts and self._shortcuts.command_palette
+	return shortcut ~= nil and Shortcuts:Matches(shortcut.Shortcut, input)
 end
 
 function MidasUI:RegisterCommand(options)
@@ -7875,18 +9105,53 @@ function MidasUI:Prompt(options)
 	return self:Dialog(values)
 end
 
+function MidasUI:RunSelfTest()
+	local report = self:GetRuntimeReport()
+	local checks = {}
+	local function check(name, passed)
+		checks[name] = passed == true
+	end
+
+	for name, available in pairs(report.PublicAPIs) do
+		check("API." .. name, available)
+	end
+	for _, name in ipairs({ "CreateProgressBar", "CreateStatCard", "CreateStatusCard", "CreateLogPanel", "CreateCallout" }) do
+		check("Section." .. name, typeof(Context.Section[name]) == "function")
+	end
+	check("Commands.Module", typeof(Context.Commands.Search) == "function" and typeof(Context.Commands.Execute) == "function")
+	check("Shortcuts.Module", typeof(Context.Shortcuts.Set) == "function" and typeof(Context.Shortcuts.Normalize) == "function")
+	check("Icons.Custom", typeof(self.RegisterIcon) == "function" and typeof(self.RegisterIcons) == "function")
+	check("Version.1.9", self.Version == "1.9.0")
+
+	local passed = true
+	for _, value in pairs(checks) do
+		if not value then
+			passed = false
+			break
+		end
+	end
+	report.Checks = checks
+	report.Passed = passed
+	return report
+end
+
+function MidasUI:PrintRuntimeReport()
+	local report = self:RunSelfTest()
+	if self._debug then
+		print("[MidasUI] Version", report.Version, "Passed", report.Passed)
+		print("[MidasUI] Counts", report.WindowCount, report.CommandCount, report.SearchItemCount, report.KeybindCount, report.ShortcutCount)
+		print("[MidasUI] Shortcuts", report.CommandPaletteShortcut, report.MenuToggleShortcut, report.ActiveOverlay)
+	end
+	return report
+end
+
 function MidasUI:_CleanupOverlays()
 	self:_CloseExpandedDropdown()
 	if self._dropdownGui then
 		self._dropdownGui:Destroy()
 		self._dropdownGui = nil
 	end
-	if self._notifyGui then
-		self._notifyGui:Destroy()
-		self._notifyGui = nil
-		self._notifyHolder = nil
-		self._notifications = nil
-	end
+	Notify:Destroy(Context)
 
 	if self._tooltipGui then
 		Tooltip:Hide(Context)
@@ -7894,6 +9159,7 @@ function MidasUI:_CleanupOverlays()
 		self._tooltipGui = nil
 		self._tooltipFrame = nil
 		self._tooltipLabel = nil
+		self._tooltipTweens = nil
 	end
 
 	if self._tooltipConnections then
@@ -7901,11 +9167,7 @@ function MidasUI:_CleanupOverlays()
 	end
 
 	CommandPalette:Destroy(Context)
-	Dialog:Close(Context)
-	if self._dialogGui then
-		self._dialogGui:Destroy()
-		self._dialogGui = nil
-	end
+	Dialog:Destroy(Context)
 end
 
 function MidasUI:_CleanupWindowRuntime()
@@ -7917,18 +9179,24 @@ function MidasUI:_CleanupWindowRuntime()
 
 	table.clear(self.Keybinds)
 
-	if self._keybindConnections then
-		Utility:DisconnectAll(self._keybindConnections)
-	end
-
+	Shortcuts:Destroy(Context)
 	self._keybindsReady = false
+end
+
+function MidasUI:DestroyAllWindows()
+	for _, window in ipairs(table.clone(self._windows)) do
+		window:Destroy()
+	end
+	return self
+end
+
+function MidasUI:IsLoaded()
+	return self._destroyed ~= true and #self._windows > 0
 end
 
 function MidasUI:Destroy()
 	self._destroyed = true
-	for _, window in ipairs(table.clone(self._windows)) do
-		window:Destroy()
-	end
+	self:DestroyAllWindows()
 
 	table.clear(self._windows)
 	table.clear(self._flagObjects)
@@ -7937,6 +9205,7 @@ function MidasUI:Destroy()
 	table.clear(self._commands or {})
 	table.clear(self._searchItems or {})
 	table.clear(self._themeCallbacks)
+	table.clear(self._recentCommands)
 
 	if self._listeningKeybind then
 		self._listeningKeybind = nil
@@ -7946,6 +9215,10 @@ function MidasUI:Destroy()
 
 	self._keybindsReady = false
 	return self
+end
+
+function MidasUI:Unload()
+	return self:Destroy()
 end
 
 return MidasUI

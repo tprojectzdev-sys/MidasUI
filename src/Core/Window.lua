@@ -32,6 +32,10 @@ function Window.new(context, options)
 		Animations = options.Animations ~= false,
 		IntroEnabled = options.Intro ~= false and options.StartupAnimation ~= false and options.Animations ~= false,
 		Tweens = {},
+		LauncherConnections = {},
+		LauncherEnabled = false,
+		LauncherOptions = typeof(options.Launcher) == "table" and table.clone(options.Launcher) or {},
+		ToggleKey = nil,
 		Template = template,
 		TemplateName = templateName,
 	}, Window)
@@ -81,7 +85,12 @@ function Window.new(context, options)
 		Parent = gui,
 	})
 	utility:Corner(main, 12)
-	utility:Stroke(main, theme.Stroke, 0.15)
+	local mainStroke = utility:Stroke(main, theme.Stroke, 0.08, 1)
+	local mainGradient = utility:Create("UIGradient", {
+		Color = ColorSequence.new(theme.Background, theme.Card),
+		Rotation = 45,
+		Parent = main,
+	})
 	local mainScale = utility:Create("UIScale", {
 		Scale = self.IntroEnabled and 0.965 or 1,
 		Parent = main,
@@ -116,19 +125,14 @@ function Window.new(context, options)
 	local icon = utility:CreateCrownMark(topbar, theme, 30)
 	icon.Position = UDim2.fromOffset(15, 13)
 	local customIcon
-	if typeof(self.Icon) == "string" and string.lower(self.Icon) ~= "crown" then
-		customIcon = utility:Create("TextLabel", {
+	if not (typeof(self.Icon) == "string" and string.lower(self.Icon) == "crown") then
+		customIcon = utility:CreateIcon(icon, self.Icon, {
 			Name = "CustomIcon",
-			Position = UDim2.fromOffset(18, 18),
-			Size = UDim2.fromOffset(11, 11),
-			BackgroundColor3 = theme.Card,
-			Font = Enum.Font.GothamBold,
-			Text = utility:IconText(self.Icon),
-			TextColor3 = theme.Highlight,
-			TextSize = 8,
-			Parent = icon,
+			Position = UDim2.fromOffset(9, 9),
+			Size = UDim2.fromOffset(12, 12),
+			Color = theme.Highlight,
+			TextSize = 9,
 		})
-		utility:Corner(customIcon, 3)
 	end
 
 	local title = utility:Create("TextLabel", {
@@ -173,6 +177,7 @@ function Window.new(context, options)
 		Parent = topbar,
 	})
 	utility:Corner(minimize, 8)
+	local minimizeStroke = utility:Stroke(minimize, theme.Stroke, 0.58)
 
 	local close = utility:Create("TextButton", {
 		Name = "Close",
@@ -188,6 +193,7 @@ function Window.new(context, options)
 		Parent = topbar,
 	})
 	utility:Corner(close, 8)
+	local closeStroke = utility:Stroke(close, theme.Stroke, 0.58)
 
 	local sidebar = utility:Create("Frame", {
 		Name = "Sidebar",
@@ -195,6 +201,15 @@ function Window.new(context, options)
 		Size = UDim2.new(0, 152, 1, -56),
 		BackgroundColor3 = theme.Sidebar,
 		Parent = main,
+	})
+	local sidebarDivider = utility:Create("Frame", {
+		Name = "SidebarDivider",
+		Position = UDim2.new(1, -1, 0, 10),
+		Size = UDim2.new(0, 1, 1, -20),
+		BackgroundColor3 = theme.Stroke,
+		BackgroundTransparency = 0.48,
+		BorderSizePixel = 0,
+		Parent = sidebar,
 	})
 
 	local tabList = utility:Create("Frame", {
@@ -210,7 +225,8 @@ function Window.new(context, options)
 		Name = "Content",
 		Position = UDim2.fromOffset(152, 56),
 		Size = UDim2.new(1, -152, 1, -56),
-		BackgroundTransparency = 1,
+		BackgroundColor3 = theme.Background,
+		BackgroundTransparency = 0.18,
 		ClipsDescendants = true,
 		Parent = main,
 	})
@@ -232,6 +248,8 @@ function Window.new(context, options)
 
 	self.Gui = gui
 	self.Main = main
+	self.MainStroke = mainStroke
+	self.MainGradient = mainGradient
 	self.MainScale = mainScale
 	self.SizeConstraint = sizeConstraint
 	self.Topbar = topbar
@@ -242,6 +260,7 @@ function Window.new(context, options)
 	self.IconLabel = icon
 	self.CustomIconLabel = customIcon
 	self.Sidebar = sidebar
+	self.SidebarDivider = sidebarDivider
 	self.TabList = tabList
 	self.Content = content
 	self.ResizeButton = resize
@@ -251,9 +270,9 @@ function Window.new(context, options)
 		{ main, "BackgroundColor3", "Background" },
 		{ topbar, "BackgroundColor3", "Topbar" },
 		{ sidebar, "BackgroundColor3", "Sidebar" },
+		{ sidebarDivider, "BackgroundColor3", "Stroke" },
+		{ content, "BackgroundColor3", "Background" },
 		{ accentLine, "BackgroundColor3", "Accent" },
-		{ customIcon, "BackgroundColor3", "Card" },
-		{ customIcon, "TextColor3", "Highlight" },
 		{ title, "TextColor3", "Text" },
 		{ subtitle, "TextColor3", "MutedText" },
 		{ minimize, "BackgroundColor3", "Card" },
@@ -264,6 +283,11 @@ function Window.new(context, options)
 	}
 
 	utility:MakeDraggable(topbar, main, self.Connections, { ClampToViewport = true })
+	utility:Connect(self.Connections, main.InputBegan, function()
+		if not self.Closed then
+			library._activeWindow = self
+		end
+	end)
 
 	local resizing = false
 	local resizeStart
@@ -321,15 +345,30 @@ function Window.new(context, options)
 
 	for _, button in ipairs({ minimize, close }) do
 		utility:Connect(self.Connections, button.MouseEnter, function()
-			utility:Tween(button, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Background })
+			utility:TweenTracked(self.Tweens, button.Name .. "Hover", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Background })
 		end)
 
 		utility:Connect(self.Connections, button.MouseLeave, function()
-			utility:Tween(button, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Card })
+			utility:TweenTracked(self.Tweens, button.Name .. "Hover", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Card })
+		end)
+		utility:Connect(self.Connections, button.MouseButton1Down, function()
+			utility:TweenTracked(self.Tweens, button.Name .. "Press", button, utility.Motion.Press, { BackgroundTransparency = 0.2 })
+		end)
+		utility:Connect(self.Connections, button.MouseButton1Up, function()
+			utility:TweenTracked(self.Tweens, button.Name .. "Press", button, utility.Motion.Press, { BackgroundTransparency = 0 })
 		end)
 	end
 
 	table.insert(library._windows, self)
+
+	if options.ToggleKey ~= nil then
+		self:SetToggleKey(options.ToggleKey)
+	end
+	if options.Launcher == true or typeof(options.Launcher) == "table" then
+		self:SetLauncherEnabled(true)
+	elseif options.Launcher ~= nil and options.Launcher ~= false then
+		library:_Warn("Launcher", "Launcher must be true, false, or an options table")
+	end
 
 	if self.SaveConfig then
 		library:LoadConfig()
@@ -402,7 +441,7 @@ function Window:_PlayIntro()
 			Enum.EasingStyle.Quart,
 			Enum.EasingDirection.Out
 		)
-		self.Utility:Tween(crest, self.Utility.Motion.Fast, { BackgroundTransparency = 1 })
+		self.Utility:TweenTracked(self.Tweens, "IntroCrestFade", crest, self.Utility.Motion.Fast, { BackgroundTransparency = 1 })
 		task.delay(self.Utility.Motion.Reveal, function()
 			if self._introToken == token then
 				self._introTargetPosition = nil
@@ -420,7 +459,7 @@ end
 
 function Window:_CancelIntro()
 	self._introToken = (self._introToken or 0) + 1
-	for _, key in ipairs({ "Intro", "IntroScale", "IntroWindow" }) do
+	for _, key in ipairs({ "Intro", "IntroScale", "IntroWindow", "IntroCrestFade" }) do
 		local tween = self.Tweens[key]
 		if tween then
 			tween:Cancel()
@@ -493,6 +532,144 @@ function Window:SelectTab(tab)
 	return self
 end
 
+function Window:_CreateLauncher()
+	if self.Closed or self.LauncherGui then
+		return self
+	end
+
+	local options = self.LauncherOptions or {}
+	local utility = self.Utility
+	local theme = self.Theme
+	local gui = utility:Create("ScreenGui", {
+		Name = "MidasUI_Launcher",
+		IgnoreGuiInset = true,
+		ResetOnSpawn = false,
+		DisplayOrder = 180,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Enabled = false,
+		Parent = utility:GetGuiParent(),
+	})
+	local position = typeof(options.Position) == "UDim2" and options.Position or UDim2.new(0, 18, 1, -18)
+	local button = utility:Create("TextButton", {
+		Name = "Launcher",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = position,
+		Size = UDim2.fromOffset(50, 50),
+		BackgroundColor3 = theme.Card,
+		Text = "",
+		AutoButtonColor = false,
+		Parent = gui,
+	})
+	utility:Corner(button, 15)
+	local buttonStroke = utility:Stroke(button, theme.Stroke, 0.12, 1)
+	local mark = utility:CreateCrownMark(button, theme, 34)
+	mark.Position = UDim2.fromOffset(8, 8)
+
+	self.LauncherGui = gui
+	self.LauncherButton = button
+	self.LauncherMark = mark
+	self.LauncherStroke = buttonStroke
+
+	local dragged = false
+	utility:MakeDraggable(button, button, self.LauncherConnections, {
+		ClampToViewport = true,
+		OnDragStart = function()
+			dragged = false
+		end,
+		OnDragMove = function(delta)
+			dragged = dragged or delta.Magnitude > 5
+		end,
+	})
+	utility:Connect(self.LauncherConnections, button.MouseButton1Click, function()
+		if dragged then
+			dragged = false
+			return
+		end
+		if self.Closed or self.Library._activeDialog then
+			return
+		end
+		self.Library._activeWindow = self
+		if self.Minimized then
+			self:Restore()
+		end
+		self:Show()
+	end)
+	utility:Connect(self.LauncherConnections, button.MouseEnter, function()
+		utility:TweenTracked(self.Tweens, "LauncherHover", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Topbar })
+	end)
+	utility:Connect(self.LauncherConnections, button.MouseLeave, function()
+		utility:TweenTracked(self.Tweens, "LauncherHover", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Card })
+	end)
+	utility:Connect(self.LauncherConnections, button.SelectionGained, function()
+		buttonStroke.Color = self.Theme.Accent
+		buttonStroke.Transparency = 0.05
+	end)
+	utility:Connect(self.LauncherConnections, button.SelectionLost, function()
+		buttonStroke.Color = self.Theme.Stroke
+		buttonStroke.Transparency = 0.12
+	end)
+	return self
+end
+
+function Window:_UpdateLauncherVisibility()
+	if self.LauncherGui then
+		self.LauncherGui.Enabled = self.LauncherEnabled and not self.Closed and (self.Hidden or self.Minimized)
+	end
+	return self
+end
+
+function Window:SetLauncherEnabled(enabled, options)
+	if self.Closed then
+		return self
+	end
+	if typeof(options) == "table" then
+		self.LauncherOptions = table.clone(options)
+		if self.LauncherButton and typeof(options.Position) == "UDim2" then
+			self.LauncherButton.Position = options.Position
+		end
+	end
+
+	self.LauncherEnabled = enabled == true
+	if self.LauncherEnabled then
+		self:_CreateLauncher()
+	end
+	self:_UpdateLauncherVisibility()
+	return self
+end
+
+function Window:SetToggleKey(value)
+	if self.Closed then
+		return self
+	end
+	local ok, display = self.Library:_SetMenuToggleKey(value, self)
+	if ok then
+		self.ToggleKey = value == false and nil or value
+		self.ToggleKeyDisplay = display
+	end
+	return self
+end
+
+function Window:ClearToggleKey()
+	if not self.Closed and self.Library._menuToggleOwner == self then
+		self.Library:_SetMenuToggleKey(false)
+	end
+	self.ToggleKey = nil
+	self.ToggleKeyDisplay = "Disabled"
+	return self
+end
+
+function Window:ToggleVisibility()
+	if self.Closed then
+		return self
+	end
+	if self.Hidden then
+		return self:Show()
+	elseif self.Minimized then
+		return self:Restore()
+	end
+	return self:Hide()
+end
+
 function Window:SetMinimized(value)
 	if self.Closed then
 		return self
@@ -526,7 +703,7 @@ function Window:SetMinimized(value)
 		self.ResizeButton.Visible = false
 		self.MinimizeButton.Text = "+"
 		self.Context.Tooltip:Hide(self.Context)
-		self.Context.Dialog:Close(self.Context)
+		self.Context.Dialog:Close(self.Context, nil, true)
 	else
 		targetSize = self._restoreSize or UDim2.fromOffset(self.Main.AbsoluteSize.X, 460)
 		self.Sidebar.Visible = true
@@ -562,6 +739,7 @@ function Window:SetMinimized(value)
 			self.ResizeButton.Visible = self.Resizeable
 		end
 	end
+	self:_UpdateLauncherVisibility()
 	return self
 end
 
@@ -590,10 +768,23 @@ function Window:SetTheme(theme)
 	end
 
 	self.Utility:ApplyStrokeTheme(self.Main, theme.Stroke)
+	self.MainGradient.Color = ColorSequence.new(theme.Background, theme.Card)
+	self.MainStroke.Color = theme.Stroke
+	self.MainStroke.Transparency = 0.08
 	self.Utility:ApplyCrownTheme(self.IconLabel, theme)
+	self.Utility:SetIconColor(self.CustomIconLabel, theme.Highlight)
 	self.TopbarGradient.Color = ColorSequence.new(theme.Topbar, theme.Background)
 	if self.IntroCrest then
 		self.Utility:ApplyCrownTheme(self.IntroCrest, theme)
+	end
+	if self.LauncherButton then
+		self.LauncherButton.BackgroundColor3 = theme.Card
+		self.Utility:ApplyStrokeTheme(self.LauncherButton, theme.Stroke)
+		self.Utility:ApplyCrownTheme(self.LauncherMark, theme)
+		if game:GetService("GuiService").SelectedObject == self.LauncherButton then
+			self.LauncherStroke.Color = theme.Accent
+			self.LauncherStroke.Transparency = 0.05
+		end
 	end
 
 	for _, tab in ipairs(self.Tabs) do
@@ -609,6 +800,7 @@ function Window:Show()
 	end
 
 	self.Hidden = false
+	self.Library._activeWindow = self
 	self._visibilityToken = (self._visibilityToken or 0) + 1
 	self.Gui.Enabled = true
 	self.Main.Visible = true
@@ -638,6 +830,7 @@ function Window:Show()
 		self.Main.Position = targetPosition
 		self.MainScale.Scale = 1
 	end
+	self:_UpdateLauncherVisibility()
 	return self
 end
 
@@ -683,6 +876,7 @@ function Window:Hide()
 	else
 		self.Gui.Enabled = false
 	end
+	self:_UpdateLauncherVisibility()
 	return self
 end
 
@@ -771,6 +965,12 @@ function Window:Destroy()
 
 	self.Closed = true
 	self.Destroyed = true
+	if self.Library._menuToggleOwner == self then
+		self.Library:_SetMenuToggleKey(false)
+	end
+	if self.Context.Shortcuts then
+		self.Context.Shortcuts:RemoveOwner(self.Library, self)
+	end
 	self.Library:CloseCommandPalette()
 	self.Library:_CloseExpandedDropdown()
 	self:_CancelIntro()
@@ -784,7 +984,7 @@ function Window:Destroy()
 		self.Context.Tooltip:Hide(self.Context)
 	end
 	if self.Context.Dialog then
-		self.Context.Dialog:Close(self.Context)
+		self.Context.Dialog:Close(self.Context, nil, true)
 	end
 
 	for _, tab in ipairs(table.clone(self.Tabs)) do
@@ -795,6 +995,11 @@ function Window:Destroy()
 	table.clear(self.Tabs)
 
 	self.Utility:DisconnectAll(self.Connections)
+	self.Utility:DisconnectAll(self.LauncherConnections)
+	if self.LauncherGui then
+		self.LauncherGui:Destroy()
+		self.LauncherGui = nil
+	end
 
 	for index = #self.Library._windows, 1, -1 do
 		if self.Library._windows[index] == self then

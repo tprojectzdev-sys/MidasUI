@@ -43,10 +43,20 @@ function Callout.new(context, section, options)
 		Parent = frame,
 	})
 	utility:Corner(accent, 3)
+	local icon
+	local left = self.Icon and 39 or 13
+	if self.Icon then
+		icon = utility:CreateIcon(frame, self.Icon, {
+			Position = UDim2.fromOffset(13, compact and 10 or 13),
+			Size = UDim2.fromOffset(18, 18),
+			Color = theme.Accent,
+			TextSize = 13,
+		})
+	end
 	local title = utility:Create("TextLabel", {
 		Name = "Title",
-		Position = UDim2.fromOffset(13, compact and 7 or 9),
-		Size = UDim2.new(1, -24, 0, 18),
+		Position = UDim2.fromOffset(left, compact and 7 or 9),
+		Size = UDim2.new(1, -(left + 11), 0, 18),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamSemibold,
 		Text = self.Name,
@@ -57,8 +67,8 @@ function Callout.new(context, section, options)
 	})
 	local content = utility:Create("TextLabel", {
 		Name = "Content",
-		Position = UDim2.fromOffset(13, compact and 29 or 33),
-		Size = UDim2.new(1, -24, 1, compact and -32 or -38),
+		Position = UDim2.fromOffset(left, compact and 29 or 33),
+		Size = UDim2.new(1, -(left + 11), 1, compact and -32 or -38),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
 		Text = self.Content,
@@ -72,6 +82,7 @@ function Callout.new(context, section, options)
 
 	self.Instance = frame
 	self.Accent = accent
+	self.IconLabel = icon
 	self.TitleLabel = title
 	self.ContentLabel = content
 	self:SetType(self.Type)
@@ -96,6 +107,7 @@ function Callout:SetType(value)
 	end
 	self.Type = normalizeType(value)
 	self.Accent.BackgroundColor3 = self:_color()
+	self.Utility:SetIconColor(self.IconLabel, self:_color())
 	return self
 end
 
@@ -138,6 +150,7 @@ function Callout:SetEnabled(enabled)
 	self.TitleLabel.TextTransparency = transparency
 	self.ContentLabel.TextTransparency = transparency
 	self.Accent.BackgroundTransparency = self.Enabled and 0 or 0.5
+	self.Utility:SetIconTransparency(self.IconLabel, transparency)
 	self.Instance.BackgroundTransparency = self.Enabled and 0 or 0.35
 	return self
 end
@@ -181,6 +194,7 @@ function Callout:SetTheme(theme)
 	self.TitleLabel.TextColor3 = theme.Text
 	self.ContentLabel.TextColor3 = theme.MutedText
 	self.Accent.BackgroundColor3 = self:_color()
+	self.Utility:SetIconColor(self.IconLabel, self:_color())
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
 	return self:SetEnabled(self.Enabled)
 end

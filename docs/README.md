@@ -1,6 +1,6 @@
 # MidasUI Documentation
 
-MidasUI is a Roblox Luau interface library with a dark premium theme, compact crown branding, controllers, profiles, transient UI, command discovery, and optional workflow-oriented layout presets.
+MidasUI is a Roblox Luau interface library with a dark premium theme, compact crown branding, controllers, profiles, transient UI, command discovery, global shortcuts, and optional workflow-oriented layout presets.
 
 ## Load In One Line
 
@@ -14,6 +14,7 @@ local MidasUI = loadstring(game:HttpGet("RAW_DIST_URL_HERE"))()
 local Window = MidasUI:CreateWindow({
 	Title = "My Panel",
 	Theme = "DarkGold",
+	ToggleKey = Enum.KeyCode.RightControl,
 })
 
 local Main = Window:CreateTab("Main")
@@ -31,9 +32,10 @@ The startup crest animation is enabled by default. Pass `Intro = false` when imm
 - Controller and flag/dependency binding
 - Precision sliders and Toggle/Hold keybinds
 - Runtime themes, custom themes, notifications, dialogs, and tooltips
-- Command registry, `Ctrl+K` palette, indexed control navigation, and searchable long dropdowns
-- Optional config profiles and debug diagnostics
+- Command registry, configurable `Ctrl+K` palette, recent actions, indexed control navigation, and searchable long dropdowns
+- Optional menu shortcut, floating launcher, config profiles, and runtime self-test diagnostics
 - `Showcase.lua` manual runtime verification suite
+- Premium motion, depth, and custom icon guidance in `POLISH.md`
 
 ## Where To Go Next
 
@@ -45,5 +47,7 @@ The startup crest animation is enabled by default. Pass `Intro = false` when imm
 | Switch or create themes | [THEMES.md](THEMES.md) |
 | Choose dashboard or dense layouts | [TEMPLATES.md](TEMPLATES.md) |
 | Add searchable actions and keyboard navigation | [COMMANDS.md](COMMANDS.md) |
+| Configure menu/palette shortcuts and a launcher | [SHORTCUTS.md](SHORTCUTS.md) |
 | Run visual/manual QA | [SHOWCASE.md](SHOWCASE.md) |
+| Use icons and understand V1.9 motion | [POLISH.md](POLISH.md) |
 | Version history | [CHANGELOG.md](CHANGELOG.md) |

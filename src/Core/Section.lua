@@ -36,9 +36,13 @@ function Section.new(context, tab, options)
 	})
 	utility:Corner(frame, 10)
 	utility:Stroke(frame, theme.Stroke, 0.3)
+	local gradient = utility:Create("UIGradient", {
+		Color = ColorSequence.new(theme.Card, theme.Background),
+		Rotation = 90,
+		Parent = frame,
+	})
 	utility:Padding(frame, { X = template.SectionPadding, Y = template.SectionPadding })
 	local layout = utility:List(frame, template.SectionSpacing)
-
 	local title = utility:Create("TextLabel", {
 		Name = "Title",
 		Size = UDim2.new(1, 0, 0, compact and 18 or 20),
@@ -50,13 +54,27 @@ function Section.new(context, tab, options)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
 	})
+	local signal = utility:Create("Frame", {
+		Name = "Accent",
+		Position = UDim2.fromOffset(0, 3),
+		Size = UDim2.fromOffset(2, compact and 12 or 14),
+		BackgroundColor3 = theme.Accent,
+		BackgroundTransparency = 0.2,
+		BorderSizePixel = 0,
+		Parent = title,
+	})
+	utility:Corner(signal, 2)
+	utility:Padding(title, { Left = 9 })
 
 	self.Frame = frame
 	self.TitleLabel = title
 	self.Layout = layout
+	self.Gradient = gradient
+	self.Signal = signal
 	self._themeObjects = {
 		{ frame, "BackgroundColor3", "Card" },
 		{ title, "TextColor3", "Text" },
+		{ signal, "BackgroundColor3", "Accent" },
 	}
 
 	return self
@@ -171,6 +189,7 @@ function Section:SetTheme(theme)
 		end
 	end
 	self.Utility:ApplyStrokeTheme(self.Frame, theme.Stroke)
+	self.Gradient.Color = ColorSequence.new(theme.Card, theme.Background)
 
 	for _, element in ipairs(self.Elements) do
 		if element.SetTheme then

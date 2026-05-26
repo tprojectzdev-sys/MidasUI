@@ -10,6 +10,7 @@ local Config = require(core:WaitForChild("Config"))
 local Notify = require(core:WaitForChild("Notify"))
 local Tooltip = require(core:WaitForChild("Tooltip"))
 local Keybinds = require(core:WaitForChild("Keybinds"))
+local Shortcuts = require(core:WaitForChild("Shortcuts"))
 local Dialog = require(core:WaitForChild("Dialog"))
 local Templates = require(core:WaitForChild("Templates"))
 local Commands = require(core:WaitForChild("Commands"))
@@ -21,7 +22,7 @@ if Icons and Icons.Map then
 end
 
 local MidasUI = {
-	Version = "1.8.0",
+	Version = "1.9.0",
 	Flags = {},
 	Keybinds = {},
 	Themes = Theme.Registry,
@@ -33,6 +34,9 @@ local MidasUI = {
 	_dependencies = {},
 	_themeCallbacks = {},
 	_themeCallbackSequence = 0,
+	_shortcuts = {},
+	_shortcutSequence = 0,
+	_recentCommands = {},
 	_debug = false,
 	_warnings = {},
 	_warningCategories = {},
@@ -40,6 +44,11 @@ local MidasUI = {
 	_configFile = "config.json",
 	_windowSettings = {},
 	_destroyed = false,
+	_paletteShortcutValue = "Ctrl+K",
+	_paletteShortcutDisabled = false,
+	_menuToggleValue = nil,
+	CommandPaletteShortcut = "Ctrl+K",
+	MenuToggleShortcut = "Disabled",
 	CommandPaletteKeyCode = Enum.KeyCode.K,
 }
 
@@ -52,6 +61,7 @@ local Context = {
 	Notify = Notify,
 	Tooltip = Tooltip,
 	Keybinds = Keybinds,
+	Shortcuts = Shortcuts,
 	Dialog = Dialog,
 	Templates = Templates,
 	Commands = Commands,
@@ -116,11 +126,7 @@ function MidasUI:_InvokeCallback(category, callback, ...)
 	end)
 end
 
-function MidasUI:GetDebugState()
-	if not self._debug then
-		return nil
-	end
-
+function MidasUI:GetRuntimeReport()
 	local flagCount = 0
 	for _ in pairs(self.Flags) do
 		flagCount = flagCount + 1
@@ -158,10 +164,23 @@ function MidasUI:GetDebugState()
 		"OpenCommandPalette",
 		"CloseCommandPalette",
 		"ToggleCommandPalette",
+		"SetCommandPaletteShortcut",
+		"ClearCommandPaletteShortcut",
+		"SetMenuToggleKey",
+		"ClearMenuToggleKey",
+		"RegisterIcon",
+		"RegisterIcons",
+		"GetRuntimeReport",
+		"RunSelfTest",
+		"PrintRuntimeReport",
+		"DestroyAllWindows",
+		"IsLoaded",
+		"Unload",
 		"OnThemeChanged",
 	}) do
 		publicAPIs[method] = typeof(self[method]) == "function"
 	end
+	local shortcuts = Shortcuts:GetState(self)
 
 	return {
 		Version = self.Version,
@@ -171,6 +190,12 @@ function MidasUI:GetDebugState()
 		KeybindCount = keybindCount,
 		CommandCount = commandCount,
 		SearchItemCount = searchItemCount,
+		ShortcutCount = #shortcuts,
+		Shortcuts = shortcuts,
+		ShortcutListenerReady = self._shortcutsReady == true,
+		RecentCommandCount = #(self._recentCommands or {}),
+		CommandPaletteShortcut = self.CommandPaletteShortcut,
+		MenuToggleShortcut = self.MenuToggleShortcut,
 		DependencyCount = #self._dependencies,
 		NotificationCount = self._notifications and #self._notifications or 0,
 		HasActiveDialog = self._activeDialog ~= nil,
@@ -187,6 +212,13 @@ function MidasUI:GetDebugState()
 	}
 end
 
+function MidasUI:GetDebugState()
+	if not self._debug then
+		return nil
+	end
+	return self:GetRuntimeReport()
+end
+
 function MidasUI:RegisterTheme(name, values)
 	local ok, err = Theme:Register(name, values)
 	if not ok then
@@ -196,6 +228,28 @@ function MidasUI:RegisterTheme(name, values)
 
 	self.Themes = Theme.Registry
 	return true, name
+end
+
+function MidasUI:RegisterIcon(name, definition)
+	local ok, result = Utility:RegisterIcon(name, definition)
+	if not ok then
+		self:_Warn("Icon", result)
+	end
+	return ok, result
+end
+
+function MidasUI:RegisterIcons(definitions)
+	if typeof(definitions) ~= "table" then
+		self:_Warn("Icon", "RegisterIcons expected a table")
+		return false, "Icon definitions must be a table"
+	end
+	for name, definition in pairs(definitions) do
+		local ok, err = self:RegisterIcon(name, definition)
+		if not ok then
+			return false, err
+		end
+	end
+	return true
 end
 
 function MidasUI:GetTemplate(nameOrTemplate)
@@ -250,6 +304,119 @@ function MidasUI:SetTheme(nameOrTheme)
 	return valid, themeName
 end
 
+function MidasUI:_EnsureShortcuts()
+	Shortcuts:Init(Context)
+	if not self._paletteShortcutDisabled and not self._shortcuts.command_palette then
+		Shortcuts:Set(self, "command_palette", self._paletteShortcutValue, function()
+			self:ToggleCommandPalette()
+		end, { Priority = 100 })
+	end
+	if self._menuToggleValue and not self._shortcuts.menu_toggle then
+		Shortcuts:Set(self, "menu_toggle", self._menuToggleValue, function()
+			local window = self._menuToggleOwner or self._activeWindow
+			if window and not window.Closed then
+				window:ToggleVisibility()
+			end
+		end, { Priority = 80, Owner = self._menuToggleOwner })
+	end
+end
+
+function MidasUI:_RefreshPaletteShortcutHint()
+	local palette = self._activePalette
+	if not palette then
+		return
+	end
+	if palette.ShortcutHint then
+		palette.ShortcutHint.Text = self.CommandPaletteShortcut
+	end
+	if palette.Footer then
+		local hint = self.CommandPaletteShortcut == "Disabled"
+			and "Shortcut disabled"
+			or (self.CommandPaletteShortcut .. " toggle")
+		palette.Footer.Text = "Up/Down navigate   Enter run   Esc close   " .. hint
+	end
+end
+
+function MidasUI:SetCommandPaletteShortcut(value)
+	if value == nil or value == false then
+		self._paletteShortcutDisabled = true
+		self._paletteShortcutValue = nil
+		self.CommandPaletteShortcut = "Disabled"
+		Shortcuts:Set(self, "command_palette", false)
+		self:_RefreshPaletteShortcutHint()
+		return true, self.CommandPaletteShortcut
+	end
+
+	local descriptor, err = Shortcuts:Normalize(value)
+	if not descriptor then
+		self:_Warn("Shortcut", "Command palette shortcut was not changed: " .. tostring(err))
+		return false, err
+	end
+	if self.MenuToggleShortcut ~= "Disabled"
+		and self.MenuToggleShortcut == Shortcuts:Format(descriptor) then
+		local message = "Command palette shortcut conflicts with the menu toggle shortcut"
+		self:_Warn("Shortcut", message)
+		return false, message
+	end
+	self._paletteShortcutDisabled = false
+	self._paletteShortcutValue = descriptor
+	local ok, display = Shortcuts:Set(self, "command_palette", descriptor, function()
+		self:ToggleCommandPalette()
+	end, { Priority = 100 })
+	if ok then
+		self.CommandPaletteShortcut = display
+		self.CommandPaletteKeyCode = descriptor.KeyCode
+		self:_RefreshPaletteShortcutHint()
+	end
+	return ok, display
+end
+
+function MidasUI:ClearCommandPaletteShortcut()
+	return self:SetCommandPaletteShortcut(false)
+end
+
+function MidasUI:_SetMenuToggleKey(value, owner)
+	if value == nil or value == false then
+		self._menuToggleValue = nil
+		self._menuToggleOwner = nil
+		self.MenuToggleShortcut = "Disabled"
+		Shortcuts:Set(self, "menu_toggle", false)
+		return true, self.MenuToggleShortcut
+	end
+
+	local descriptor, err = Shortcuts:Normalize(value)
+	if not descriptor then
+		self:_Warn("Shortcut", "Menu toggle shortcut was not changed: " .. tostring(err))
+		return false, err
+	end
+	if not self._paletteShortcutDisabled
+		and self.CommandPaletteShortcut == Shortcuts:Format(descriptor) then
+		local message = "Menu toggle shortcut conflicts with the command palette shortcut"
+		self:_Warn("Shortcut", message)
+		return false, message
+	end
+	self._menuToggleValue = descriptor
+	self._menuToggleOwner = owner
+	local ok, display = Shortcuts:Set(self, "menu_toggle", descriptor, function()
+		local window = owner or self._activeWindow
+		if window and not window.Closed then
+			window:ToggleVisibility()
+		end
+	end, { Priority = 80, Owner = owner })
+	if ok then
+		self.MenuToggleShortcut = display
+	end
+	return ok, display
+end
+
+function MidasUI:SetMenuToggleKey(value)
+	return self:_SetMenuToggleKey(value, nil)
+end
+
+function MidasUI:ClearMenuToggleKey()
+	return self:_SetMenuToggleKey(false)
+end
+
 function MidasUI:CreateWindow(options)
 	if options ~= nil and typeof(options) ~= "table" then
 		self:_Warn("API", "CreateWindow expected an options table")
@@ -258,6 +425,7 @@ function MidasUI:CreateWindow(options)
 
 	options = options or {}
 	self._destroyed = false
+	self:_EnsureShortcuts()
 	self:SetTheme(options.Theme or self.ThemeName)
 	CommandPalette:Init(Context)
 	local window = Context.Window.new(Context, options)
@@ -266,13 +434,8 @@ function MidasUI:CreateWindow(options)
 end
 
 function MidasUI:_IsCommandPaletteHotkey(input)
-	if not input or input.KeyCode ~= self.CommandPaletteKeyCode then
-		return false
-	end
-
-	local userInputService = game:GetService("UserInputService")
-	return userInputService:IsKeyDown(Enum.KeyCode.LeftControl)
-		or userInputService:IsKeyDown(Enum.KeyCode.RightControl)
+	local shortcut = self._shortcuts and self._shortcuts.command_palette
+	return shortcut ~= nil and Shortcuts:Matches(shortcut.Shortcut, input)
 end
 
 function MidasUI:RegisterCommand(options)
@@ -531,18 +694,53 @@ function MidasUI:Prompt(options)
 	return self:Dialog(values)
 end
 
+function MidasUI:RunSelfTest()
+	local report = self:GetRuntimeReport()
+	local checks = {}
+	local function check(name, passed)
+		checks[name] = passed == true
+	end
+
+	for name, available in pairs(report.PublicAPIs) do
+		check("API." .. name, available)
+	end
+	for _, name in ipairs({ "CreateProgressBar", "CreateStatCard", "CreateStatusCard", "CreateLogPanel", "CreateCallout" }) do
+		check("Section." .. name, typeof(Context.Section[name]) == "function")
+	end
+	check("Commands.Module", typeof(Context.Commands.Search) == "function" and typeof(Context.Commands.Execute) == "function")
+	check("Shortcuts.Module", typeof(Context.Shortcuts.Set) == "function" and typeof(Context.Shortcuts.Normalize) == "function")
+	check("Icons.Custom", typeof(self.RegisterIcon) == "function" and typeof(self.RegisterIcons) == "function")
+	check("Version.1.9", self.Version == "1.9.0")
+
+	local passed = true
+	for _, value in pairs(checks) do
+		if not value then
+			passed = false
+			break
+		end
+	end
+	report.Checks = checks
+	report.Passed = passed
+	return report
+end
+
+function MidasUI:PrintRuntimeReport()
+	local report = self:RunSelfTest()
+	if self._debug then
+		print("[MidasUI] Version", report.Version, "Passed", report.Passed)
+		print("[MidasUI] Counts", report.WindowCount, report.CommandCount, report.SearchItemCount, report.KeybindCount, report.ShortcutCount)
+		print("[MidasUI] Shortcuts", report.CommandPaletteShortcut, report.MenuToggleShortcut, report.ActiveOverlay)
+	end
+	return report
+end
+
 function MidasUI:_CleanupOverlays()
 	self:_CloseExpandedDropdown()
 	if self._dropdownGui then
 		self._dropdownGui:Destroy()
 		self._dropdownGui = nil
 	end
-	if self._notifyGui then
-		self._notifyGui:Destroy()
-		self._notifyGui = nil
-		self._notifyHolder = nil
-		self._notifications = nil
-	end
+	Notify:Destroy(Context)
 
 	if self._tooltipGui then
 		Tooltip:Hide(Context)
@@ -550,6 +748,7 @@ function MidasUI:_CleanupOverlays()
 		self._tooltipGui = nil
 		self._tooltipFrame = nil
 		self._tooltipLabel = nil
+		self._tooltipTweens = nil
 	end
 
 	if self._tooltipConnections then
@@ -557,11 +756,7 @@ function MidasUI:_CleanupOverlays()
 	end
 
 	CommandPalette:Destroy(Context)
-	Dialog:Close(Context)
-	if self._dialogGui then
-		self._dialogGui:Destroy()
-		self._dialogGui = nil
-	end
+	Dialog:Destroy(Context)
 end
 
 function MidasUI:_CleanupWindowRuntime()
@@ -573,18 +768,24 @@ function MidasUI:_CleanupWindowRuntime()
 
 	table.clear(self.Keybinds)
 
-	if self._keybindConnections then
-		Utility:DisconnectAll(self._keybindConnections)
-	end
-
+	Shortcuts:Destroy(Context)
 	self._keybindsReady = false
+end
+
+function MidasUI:DestroyAllWindows()
+	for _, window in ipairs(table.clone(self._windows)) do
+		window:Destroy()
+	end
+	return self
+end
+
+function MidasUI:IsLoaded()
+	return self._destroyed ~= true and #self._windows > 0
 end
 
 function MidasUI:Destroy()
 	self._destroyed = true
-	for _, window in ipairs(table.clone(self._windows)) do
-		window:Destroy()
-	end
+	self:DestroyAllWindows()
 
 	table.clear(self._windows)
 	table.clear(self._flagObjects)
@@ -593,6 +794,7 @@ function MidasUI:Destroy()
 	table.clear(self._commands or {})
 	table.clear(self._searchItems or {})
 	table.clear(self._themeCallbacks)
+	table.clear(self._recentCommands)
 
 	if self._listeningKeybind then
 		self._listeningKeybind = nil
@@ -602,6 +804,10 @@ function MidasUI:Destroy()
 
 	self._keybindsReady = false
 	return self
+end
+
+function MidasUI:Unload()
+	return self:Destroy()
 end
 
 return MidasUI

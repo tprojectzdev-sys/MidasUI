@@ -20,22 +20,43 @@ function Dialog:Init(context)
 	library._dialogGui = gui
 end
 
-function Dialog:Close(context, controller)
+function Dialog:Close(context, controller, instant)
 	local library = context.Library
 	local dialog = library._activeDialog
 	if controller and dialog and dialog.Controller ~= controller then
 		return
 	end
-
-	if dialog and dialog.Connections then
-		context.Utility:DisconnectAll(dialog.Connections)
+	if not dialog then
+		return
 	end
-	if dialog and dialog.Gui then
-		dialog.Gui:Destroy()
+	library._activeDialog = nil
+	context.Utility:DisconnectAll(dialog.Connections)
+	if instant or not dialog.Gui or not dialog.Gui.Parent then
+		context.Utility:CancelTweens(dialog.Tweens)
+		if dialog.Gui and dialog.Gui.Parent then
+			dialog.Gui:Destroy()
+		end
+		return
 	end
-	if not controller or not dialog or dialog.Controller == controller then
-		library._activeDialog = nil
-	end
+	library._closingDialog = dialog
+	context.Utility:TweenTracked(dialog.Tweens, "Overlay", dialog.Gui, context.Utility.Motion.Exit, {
+		BackgroundTransparency = 1,
+	}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	context.Utility:TweenTracked(dialog.Tweens, "Scale", dialog.Scale, context.Utility.Motion.Exit, {
+		Scale = 0.975,
+	}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	local exit = context.Utility:TweenTracked(dialog.Tweens, "Card", dialog.Card, context.Utility.Motion.Exit, {
+		Position = UDim2.fromScale(0.5, 0.48),
+	}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	exit.Completed:Connect(function()
+		context.Utility:CancelTweens(dialog.Tweens)
+		if dialog.Gui and dialog.Gui.Parent then
+			dialog.Gui:Destroy()
+		end
+		if library._closingDialog == dialog then
+			library._closingDialog = nil
+		end
+	end)
 end
 
 function Dialog:SetTheme(context)
@@ -50,6 +71,9 @@ function Dialog:SetTheme(context)
 		dialog.Card.BackgroundColor3 = theme.Card
 		context.Utility:ApplyStrokeTheme(dialog.Card, theme.Stroke)
 	end
+	if dialog.Gradient then
+		dialog.Gradient.Color = ColorSequence.new(theme.Card, theme.Background)
+	end
 	if dialog.Title then
 		dialog.Title.TextColor3 = theme.Text
 	end
@@ -59,10 +83,14 @@ function Dialog:SetTheme(context)
 	if dialog.Signal then
 		dialog.Signal.BackgroundColor3 = dialog.Danger and theme.Danger or theme.Accent
 	end
+	if dialog.Icon then
+		context.Utility:SetIconColor(dialog.Icon, dialog.Danger and theme.Danger or theme.Accent)
+	end
 	if dialog.Input then
 		dialog.Input.BackgroundColor3 = theme.Background
 		dialog.Input.TextColor3 = theme.Text
 		dialog.Input.PlaceholderColor3 = theme.MutedText
+		context.Utility:ApplyStrokeTheme(dialog.Input, dialog.Input:IsFocused() and theme.Accent or theme.Stroke)
 	end
 	for _, button in ipairs(dialog.Buttons or {}) do
 		local primaryColor = dialog.Danger and theme.Danger or theme.Accent
@@ -75,7 +103,14 @@ end
 function Dialog:Show(context, options)
 	options = options or {}
 	self:Init(context)
-	self:Close(context)
+	self:Close(context, nil, true)
+	if context.Library._closingDialog then
+		context.Utility:CancelTweens(context.Library._closingDialog.Tweens)
+		if context.Library._closingDialog.Gui and context.Library._closingDialog.Gui.Parent then
+			context.Library._closingDialog.Gui:Destroy()
+		end
+		context.Library._closingDialog = nil
+	end
 
 	local library = context.Library
 	local utility = context.Utility
@@ -114,10 +149,24 @@ function Dialog:Show(context, options)
 	utility:Corner(card, 12)
 	utility:Stroke(card, theme.Stroke, 0.18)
 	utility:Padding(card, { X = 18, Y = 16 })
+	local cardGradient = utility:Create("UIGradient", {
+		Color = ColorSequence.new(theme.Card, theme.Background),
+		Rotation = 90,
+		Parent = card,
+	})
 
+	local headingLeft = options.Icon ~= nil and 31 or 0
+	local icon = options.Icon ~= nil and utility:CreateIcon(card, options.Icon, {
+		Position = UDim2.fromOffset(0, 2),
+		Size = UDim2.fromOffset(20, 20),
+		Color = danger and theme.Danger or theme.Accent,
+		TextSize = 13,
+		ZIndex = 102,
+	}) or nil
 	local title = utility:Create("TextLabel", {
 		Name = "Title",
-		Size = UDim2.new(1, -4, 0, 24),
+		Position = UDim2.fromOffset(headingLeft, 0),
+		Size = UDim2.new(1, -(headingLeft + 4), 0, 24),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamSemibold,
 		Text = tostring(options.Title or "MidasUI"),
@@ -155,6 +204,7 @@ function Dialog:Show(context, options)
 	utility:Corner(signal, 2)
 
 	local inputBox
+	local inputStroke
 	if dialogType == "Input" then
 		inputBox = utility:Create("TextBox", {
 			Name = "Input",
@@ -173,7 +223,7 @@ function Dialog:Show(context, options)
 			Parent = card,
 		})
 		utility:Corner(inputBox, 8)
-		utility:Stroke(inputBox, theme.Stroke, 0.5)
+		inputStroke = utility:Stroke(inputBox, theme.Stroke, 0.5)
 		utility:Padding(inputBox, { X = 10 })
 	end
 
@@ -192,6 +242,7 @@ function Dialog:Show(context, options)
 	local buttons = {}
 	local connections = {}
 	local buttonActions = {}
+	local tweens = {}
 	local scale = utility:Create("UIScale", {
 		Scale = 0.97,
 		Parent = card,
@@ -219,6 +270,15 @@ function Dialog:Show(context, options)
 		utility:Corner(button, 8)
 		utility:Stroke(button, primary and primaryColor or theme.Stroke, primary and 0.2 or 0.5)
 		table.insert(buttons, button)
+		utility:Connect(connections, button.MouseEnter, function()
+			local activeTheme = library.Theme
+			local color = primary and (danger and activeTheme.Danger or activeTheme.Accent) or activeTheme.Topbar
+			utility:TweenTracked(tweens, name .. "Hover", button, utility.Motion.Hover, { BackgroundColor3 = color })
+		end)
+		utility:Connect(connections, button.MouseLeave, function()
+			local color = primary and primaryColor or library.Theme.Background
+			utility:TweenTracked(tweens, name .. "Hover", button, utility.Motion.Hover, { BackgroundColor3 = color })
+		end)
 
 		buttonActions[name] = function()
 			if callback ~= nil then
@@ -247,8 +307,11 @@ function Dialog:Show(context, options)
 		Buttons = buttons,
 		Danger = danger,
 		Signal = signal,
+		Icon = icon,
+		Gradient = cardGradient,
 		Scale = scale,
 		Connections = connections,
+		Tweens = tweens,
 		Controller = controller,
 	}
 
@@ -269,17 +332,46 @@ function Dialog:Show(context, options)
 			end
 		end
 	end)
+	if inputBox and inputStroke then
+		utility:Connect(connections, inputBox.Focused, function()
+			inputStroke.Color = library.Theme.Accent
+			inputStroke.Transparency = 0.1
+		end)
+		utility:Connect(connections, inputBox.FocusLost, function()
+			inputStroke.Color = library.Theme.Stroke
+			inputStroke.Transparency = 0.5
+		end)
+	end
+	utility:Connect(connections, overlay.MouseButton1Click, function()
+		controller:Close()
+	end)
 
 	overlay.BackgroundTransparency = 1
 	card.Position = UDim2.fromScale(0.5, 0.48)
-	utility:Tween(overlay, utility.Motion.Standard, { BackgroundTransparency = 0.42 })
-	utility:Tween(card, utility.Motion.Reveal, { Position = UDim2.fromScale(0.5, 0.5) }, Enum.EasingStyle.Quart)
-	utility:Tween(scale, utility.Motion.Reveal, { Scale = 1 }, Enum.EasingStyle.Back)
+	utility:TweenTracked(tweens, "Overlay", overlay, utility.Motion.Overlay, { BackgroundTransparency = 0.42 })
+	utility:TweenTracked(tweens, "Card", card, utility.Motion.Reveal, { Position = UDim2.fromScale(0.5, 0.5) }, Enum.EasingStyle.Quart)
+	utility:TweenTracked(tweens, "Scale", scale, utility.Motion.Reveal, { Scale = 1 }, Enum.EasingStyle.Quart)
 	if inputBox then
 		inputBox:CaptureFocus()
 	end
 
 	return controller
+end
+
+function Dialog:Destroy(context)
+	local library = context.Library
+	self:Close(context, nil, true)
+	if library._closingDialog then
+		context.Utility:CancelTweens(library._closingDialog.Tweens)
+		if library._closingDialog.Gui and library._closingDialog.Gui.Parent then
+			library._closingDialog.Gui:Destroy()
+		end
+		library._closingDialog = nil
+	end
+	if library._dialogGui then
+		library._dialogGui:Destroy()
+		library._dialogGui = nil
+	end
 end
 
 return Dialog

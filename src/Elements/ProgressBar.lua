@@ -38,6 +38,7 @@ function ProgressBar.new(context, section, options)
 		Value = clampValue(options.Default or options.Value, min, max),
 		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
+		Tweens = {},
 		Enabled = true,
 	}, ProgressBar)
 
@@ -128,9 +129,10 @@ function ProgressBar:SetValue(value, fireCallback, instant)
 	local percent = formatPercent(ratio * 100)
 	self.StatusLabel.Text = self.Status ~= "" and (self.Status .. "  " .. percent) or percent
 	if instant then
+		self.Utility:CancelTweens(self.Tweens)
 		self.Fill.Size = UDim2.fromScale(ratio, 1)
 	else
-		self.Utility:Tween(self.Fill, self.Utility.Motion.Standard, { Size = UDim2.fromScale(ratio, 1) })
+		self.Utility:TweenTracked(self.Tweens, "Fill", self.Fill, self.Utility.Motion.Standard, { Size = UDim2.fromScale(ratio, 1) })
 	end
 
 	if changed and fireCallback ~= false then
@@ -222,6 +224,7 @@ function ProgressBar:Destroy()
 		return self
 	end
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)

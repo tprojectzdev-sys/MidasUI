@@ -12,6 +12,8 @@ function Button.new(context, section, options)
 		Name = tostring(options.Name or options.Text or "Button"),
 		Callback = typeof(options.Callback or options.Func) == "function" and (options.Callback or options.Func) or function() end,
 		Connections = {},
+		Tweens = {},
+		Icon = options.Icon,
 		Enabled = true,
 	}, Button)
 
@@ -32,9 +34,22 @@ function Button.new(context, section, options)
 		Parent = section.Frame,
 	})
 	utility:Corner(button, 8)
-	utility:Stroke(button, theme.Stroke, 0.55)
+	local stroke = utility:Stroke(button, theme.Stroke, 0.55)
+	local icon
+	if self.Icon ~= nil then
+		icon = utility:CreateIcon(button, self.Icon, {
+			Position = UDim2.fromOffset(12, compact and 8 or 11),
+			Size = UDim2.fromOffset(16, 16),
+			Color = theme.Accent,
+			TextSize = 12,
+		})
+		button.TextXAlignment = Enum.TextXAlignment.Left
+		utility:Padding(button, { Left = 38, Right = 12 })
+	end
 
 	self.Instance = button
+	self.Stroke = stroke
+	self.IconLabel = icon
 	self._themeObjects = {
 		{ button, "BackgroundColor3", "Background" },
 		{ button, "TextColor3", "Text" },
@@ -44,14 +59,14 @@ function Button.new(context, section, options)
 		if self.Enabled == false then
 			return
 		end
-		utility:Tween(button, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Topbar })
+		utility:TweenTracked(self.Tweens, "Surface", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Topbar })
 	end)
 
 	utility:Connect(self.Connections, button.MouseLeave, function()
 		if self.Enabled == false then
 			return
 		end
-		utility:Tween(button, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Background })
+		utility:TweenTracked(self.Tweens, "Surface", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Background })
 	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
@@ -65,14 +80,24 @@ function Button.new(context, section, options)
 		if self.Enabled == false then
 			return
 		end
-		utility:Tween(button, utility.Motion.Fast, { BackgroundTransparency = 0.18 })
+		utility:TweenTracked(self.Tweens, "Press", button, utility.Motion.Press, { BackgroundTransparency = 0.18 })
 	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Up, function()
 		if self.Enabled == false then
 			return
 		end
-		utility:Tween(button, utility.Motion.Fast, { BackgroundTransparency = 0 })
+		utility:TweenTracked(self.Tweens, "Press", button, utility.Motion.Press, { BackgroundTransparency = 0 })
+	end)
+	utility:Connect(self.Connections, button.SelectionGained, function()
+		if self.Enabled ~= false then
+			stroke.Color = self.Theme.Accent
+			stroke.Transparency = 0.08
+		end
+	end)
+	utility:Connect(self.Connections, button.SelectionLost, function()
+		stroke.Color = self.Theme.Stroke
+		stroke.Transparency = 0.55
 	end)
 
 	self.Library:_BindElement(self, options)
@@ -157,6 +182,11 @@ function Button:SetTheme(theme)
 		object[property] = theme[key]
 	end
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
+	self.Utility:SetIconColor(self.IconLabel, theme.Accent)
+	if game:GetService("GuiService").SelectedObject == self.Instance then
+		self.Stroke.Color = theme.Accent
+		self.Stroke.Transparency = 0.08
+	end
 	self:SetEnabled(self.Enabled)
 	return self
 end
@@ -167,6 +197,7 @@ function Button:Destroy()
 	end
 
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Library:_UnregisterDependencies(self)
 	self.Utility:DisconnectAll(self.Connections)
 	if self.Instance then

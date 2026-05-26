@@ -20,6 +20,7 @@ function Toggle.new(context, section, options)
 		Value = options.Default == true,
 		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
+		Tweens = {},
 		Enabled = true,
 	}, Toggle)
 
@@ -94,7 +95,7 @@ function Toggle.new(context, section, options)
 			return
 		end
 
-		utility:Tween(label, utility.Motion.Fast, { TextColor3 = self.Theme.Accent })
+		utility:TweenTracked(self.Tweens, "Label", label, utility.Motion.Hover, { TextColor3 = self.Theme.Accent })
 	end)
 
 	utility:Connect(self.Connections, row.MouseLeave, function()
@@ -102,7 +103,7 @@ function Toggle.new(context, section, options)
 			return
 		end
 
-		utility:Tween(label, utility.Motion.Fast, { TextColor3 = self.Theme.Text })
+		utility:TweenTracked(self.Tweens, "Label", label, utility.Motion.Hover, { TextColor3 = self.Theme.Text })
 	end)
 
 	context.Flags:Register(self.Library, self.Flag, self)
@@ -135,10 +136,10 @@ function Toggle:SetValue(value, fireCallback)
 	end
 
 	local theme = self.Theme
-	self.Utility:Tween(self.Track, self.Utility.Motion.Standard, {
+	self.Utility:TweenTracked(self.Tweens, "Track", self.Track, self.Utility.Motion.Toggle, {
 		BackgroundColor3 = self.Value and theme.Accent or theme.Background,
 	})
-	self.Utility:Tween(self.Knob, self.Utility.Motion.Standard, {
+	self.Utility:TweenTracked(self.Tweens, "Knob", self.Knob, self.Utility.Motion.Toggle, {
 		Position = self.Value and UDim2.fromOffset(23, 3) or UDim2.fromOffset(3, 3),
 		BackgroundColor3 = self.Value and theme.Text or theme.MutedText,
 	})
@@ -241,6 +242,7 @@ function Toggle:Destroy()
 	end
 
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)

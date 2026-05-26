@@ -1,69 +1,54 @@
-local UserInputService = game:GetService("UserInputService")
-
 local Keybinds = {}
 
 function Keybinds:Init(library)
-	if library._keybindsReady then
-		return
+	if library._EnsureShortcuts then
+		library:_EnsureShortcuts()
+	end
+	library._keybindsReady = true
+end
+
+function Keybinds:HandleInputBegan(library, input, processed)
+	if library._activeDialog or library._activePalette
+		or (library._expandedDropdown and library._expandedDropdown.Expanded) then
+		return false
 	end
 
-	library._keybindsReady = true
-	library._keybindConnections = library._keybindConnections or {}
+	local listening = library._listeningKeybind
+	if listening then
+		listening:CaptureInput(input.KeyCode)
+		return true
+	end
 
-	table.insert(library._keybindConnections, UserInputService.InputBegan:Connect(function(input, processed)
-		if input.UserInputType ~= Enum.UserInputType.Keyboard then
-			return
-		end
+	if processed or game:GetService("UserInputService"):GetFocusedTextBox() then
+		return false
+	end
 
-		if library._activeDialog or library._activePalette
-			or (library._expandedDropdown and library._expandedDropdown.Expanded) then
-			return
-		end
-
-		local listening = library._listeningKeybind
-		if listening then
-			listening:CaptureInput(input.KeyCode)
-			return
-		end
-
-		if library._IsCommandPaletteHotkey and library:_IsCommandPaletteHotkey(input) then
-			return
-		end
-
-		if processed or UserInputService:GetFocusedTextBox() then
-			return
-		end
-
-		for _, bind in pairs(library.Keybinds) do
-			if bind.Enabled ~= false and bind.KeyCode ~= nil and bind.KeyCode == input.KeyCode then
-				if bind.Mode == "Hold" then
-					if not bind.Holding then
-						bind.Holding = true
-						library:_InvokeCallback("Keybind", bind.Callback, true, bind.KeyCode)
-					end
-				elseif not bind.Holding then
+	for _, bind in pairs(library.Keybinds) do
+		if bind.Enabled ~= false and bind.KeyCode ~= nil and bind.KeyCode == input.KeyCode then
+			if bind.Mode == "Hold" then
+				if not bind.Holding then
 					bind.Holding = true
-					library:_InvokeCallback("Keybind", bind.Callback, bind.KeyCode)
+					library:_InvokeCallback("Keybind", bind.Callback, true, bind.KeyCode)
 				end
+			elseif not bind.Holding then
+				bind.Holding = true
+				library:_InvokeCallback("Keybind", bind.Callback, bind.KeyCode)
 			end
 		end
-	end))
+	end
+	return false
+end
 
-	table.insert(library._keybindConnections, UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType ~= Enum.UserInputType.Keyboard then
-			return
-		end
+function Keybinds:HandleInputEnded(library, input)
+	for _, bind in pairs(library.Keybinds) do
+		if bind.KeyCode ~= nil and bind.KeyCode == input.KeyCode and bind.Holding then
+			bind.Holding = false
 
-		for _, bind in pairs(library.Keybinds) do
-			if bind.KeyCode ~= nil and bind.KeyCode == input.KeyCode and bind.Holding then
-				bind.Holding = false
-
-				if bind.Mode == "Hold" and bind.Enabled ~= false then
-					library:_InvokeCallback("Keybind", bind.Callback, false, bind.KeyCode)
-				end
+			if bind.Mode == "Hold" and bind.Enabled ~= false then
+				library:_InvokeCallback("Keybind", bind.Callback, false, bind.KeyCode)
 			end
 		end
-	end))
+	end
 end
 
 function Keybinds:Register(library, keybind)

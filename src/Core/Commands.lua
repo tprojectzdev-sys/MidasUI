@@ -118,8 +118,30 @@ end
 function Commands:Init(library)
 	library._commands = library._commands or {}
 	library._searchItems = library._searchItems or {}
+	library._recentCommands = library._recentCommands or {}
 	library._commandSequence = library._commandSequence or 0
 	library._searchSequence = library._searchSequence or 0
+end
+
+function Commands:RecordRecent(library, id)
+	self:Init(library)
+	for index = #library._recentCommands, 1, -1 do
+		if library._recentCommands[index] == id then
+			table.remove(library._recentCommands, index)
+		end
+	end
+	table.insert(library._recentCommands, 1, id)
+	while #library._recentCommands > 6 do
+		table.remove(library._recentCommands)
+	end
+end
+
+function Commands:RemoveRecent(library, id)
+	for index = #(library._recentCommands or {}), 1, -1 do
+		if library._recentCommands[index] == id then
+			table.remove(library._recentCommands, index)
+		end
+	end
 end
 
 function Commands:Register(library, options)
@@ -209,6 +231,7 @@ function Commands:Unregister(library, idOrController)
 		return false
 	end
 	library._commands[id] = nil
+	self:RemoveRecent(library, id)
 	return true
 end
 
@@ -217,6 +240,7 @@ function Commands:RemoveOwner(library, owner)
 	for id, command in pairs(library._commands) do
 		if command.Owner == owner then
 			library._commands[id] = nil
+			self:RemoveRecent(library, id)
 		end
 	end
 end
@@ -243,6 +267,7 @@ function Commands:Execute(library, idOrResult)
 			library:_Warn("Command", "Ignored command whose owner was destroyed: " .. result.Title)
 			return false, true
 		end
+		self:RecordRecent(library, result.Id)
 		library:_InvokeCallback("Command", result.Action, result.Controller)
 		return true, result.CloseOnRun
 	end
@@ -342,19 +367,30 @@ function Commands:Search(library, query, options)
 	options = typeof(options) == "table" and options or {}
 	query = lower(query)
 	local results = {}
+	local recentIndex = {}
+	for index, id in ipairs(library._recentCommands or {}) do
+		recentIndex[id] = index
+	end
 
 	for id, command in pairs(library._commands) do
 		if command.Owner and (command.Owner.Destroyed or command.Owner.Closed) then
 			library._commands[id] = nil
+			self:RemoveRecent(library, id)
 		else
 			local score = rank(command, query)
 			if score then
+				local recent = query == "" and recentIndex[command.Id] ~= nil
+				if recent then
+					score = score + 100 - recentIndex[command.Id]
+				end
 				table.insert(results, {
 					Id = command.Id,
 					Type = command.Type,
 					Title = command.Title,
 					Description = command.Description,
 					Category = command.Category,
+					Group = query == "" and (recent and "Recent" or "Commands") or command.Category,
+					Recent = recent,
 					Keywords = command.Keywords,
 					Score = score,
 					_Record = command,

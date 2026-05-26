@@ -53,6 +53,7 @@ function Tooltip:Init(context)
 	library._tooltipFrame = frame
 	library._tooltipLabel = label
 	library._tooltipConnections = library._tooltipConnections or {}
+	library._tooltipTweens = library._tooltipTweens or {}
 
 	utility:Connect(library._tooltipConnections, UserInputService.InputChanged, function(input)
 		if input.UserInputType == Enum.UserInputType.MouseMovement and frame.Visible then
@@ -102,7 +103,7 @@ function Tooltip:Show(context, text)
 	label.Text = tostring(text)
 	frame.Visible = true
 	frame.BackgroundTransparency = 1
-	context.Utility:Tween(frame, context.Utility.Motion.Fast, { BackgroundTransparency = 0.02 })
+	context.Utility:TweenTracked(library._tooltipTweens, "Frame", frame, context.Utility.Motion.Fast, { BackgroundTransparency = 0.02 })
 	self:Position(context, UserInputService:GetMouseLocation())
 end
 
@@ -110,6 +111,7 @@ function Tooltip:Hide(context)
 	local library = context.Library
 	local frame = library._tooltipFrame
 	if frame then
+		context.Utility:CancelTweens(library._tooltipTweens)
 		frame.Visible = false
 	end
 end

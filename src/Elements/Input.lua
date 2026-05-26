@@ -21,6 +21,7 @@ function Input.new(context, section, options)
 		Placeholder = tostring(options.Placeholder or ""),
 		Callback = typeof(options.Callback) == "function" and options.Callback or function() end,
 		Connections = {},
+		Tweens = {},
 		Enabled = true,
 	}, Input)
 
@@ -64,12 +65,13 @@ function Input.new(context, section, options)
 		Parent = frame,
 	})
 	utility:Corner(box, 8)
-	utility:Stroke(box, theme.Stroke, 0.5)
+	local boxStroke = utility:Stroke(box, theme.Stroke, 0.5)
 	utility:Padding(box, { X = 10 })
 
 	self.Instance = frame
 	self.Label = label
 	self.Box = box
+	self.BoxStroke = boxStroke
 
 	utility:Connect(self.Connections, box.FocusLost, function()
 		if self.Enabled == false then
@@ -88,11 +90,15 @@ function Input.new(context, section, options)
 			return
 		end
 
-		utility:Tween(box, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Topbar })
+		utility:TweenTracked(self.Tweens, "Focus", box, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Topbar })
+		boxStroke.Color = self.Theme.Accent
+		boxStroke.Transparency = 0.1
 	end)
 
 	utility:Connect(self.Connections, box.FocusLost, function()
-		utility:Tween(box, utility.Motion.Fast, { BackgroundColor3 = self.Theme.Background })
+		utility:TweenTracked(self.Tweens, "Focus", box, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Background })
+		boxStroke.Color = self.Theme.Stroke
+		boxStroke.Transparency = 0.5
 	end)
 
 	context.Flags:Register(self.Library, self.Flag, self)
@@ -220,6 +226,9 @@ function Input:SetTheme(theme)
 	self.Box.TextColor3 = theme.Text
 	self.Box.PlaceholderColor3 = theme.MutedText
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
+	if self.Box:IsFocused() then
+		self.BoxStroke.Color = theme.Accent
+	end
 	self:SetEnabled(self.Enabled)
 	return self
 end
@@ -230,6 +239,7 @@ function Input:Destroy()
 	end
 
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self.Utility:DisconnectAll(self.Connections)

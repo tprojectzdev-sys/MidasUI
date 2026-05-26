@@ -33,6 +33,8 @@ function Dropdown.new(context, section, options)
 		Connections = {},
 		OptionConnections = {},
 		InteractionConnections = {},
+		Tweens = {},
+		Icon = options.Icon,
 		Expanded = false,
 		Enabled = true,
 		MaxVisibleOptions = math.clamp(tonumber(options.MaxVisibleOptions) or 5, 1, 20),
@@ -90,12 +92,23 @@ function Dropdown.new(context, section, options)
 		Parent = frame,
 	})
 	utility:Corner(button, 8)
-	utility:Stroke(button, theme.Stroke, 0.5)
+	local buttonStroke = utility:Stroke(button, theme.Stroke, 0.5)
+	local buttonIcon
+	local valueLeft = 10
+	if self.Icon ~= nil then
+		buttonIcon = utility:CreateIcon(button, self.Icon, {
+			Position = UDim2.fromOffset(10, compact and 7 or 9),
+			Size = UDim2.fromOffset(16, 16),
+			Color = theme.Accent,
+			TextSize = 12,
+		})
+		valueLeft = 34
+	end
 
 	local valueLabel = utility:Create("TextLabel", {
 		Name = "Value",
-		Position = UDim2.fromOffset(10, 0),
-		Size = UDim2.new(1, -42, 1, 0),
+		Position = UDim2.fromOffset(valueLeft, 0),
+		Size = UDim2.new(1, -(valueLeft + 32), 1, 0),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
 		TextColor3 = theme.MutedText,
@@ -150,7 +163,7 @@ function Dropdown.new(context, section, options)
 		Parent = list,
 	})
 	utility:Corner(searchBox, 6)
-	utility:Stroke(searchBox, theme.Stroke, 0.5)
+	local searchStroke = utility:Stroke(searchBox, theme.Stroke, 0.5)
 	utility:Padding(searchBox, { X = 9 })
 
 	local scroll = utility:Create("ScrollingFrame", {
@@ -185,10 +198,13 @@ function Dropdown.new(context, section, options)
 	self.Instance = frame
 	self.Label = label
 	self.Button = button
+	self.ButtonStroke = buttonStroke
+	self.IconLabel = buttonIcon
 	self.ValueLabel = valueLabel
 	self.Arrow = arrow
 	self.List = list
 	self.SearchBox = searchBox
+	self.SearchStroke = searchStroke
 	self.Scroll = scroll
 	self.OptionLayout = optionLayout
 	self.EmptyLabel = emptyLabel
@@ -202,6 +218,14 @@ function Dropdown.new(context, section, options)
 	utility:Connect(self.Connections, searchBox:GetPropertyChangedSignal("Text"), function()
 		self:_FilterOptions(searchBox.Text)
 	end)
+	utility:Connect(self.Connections, searchBox.Focused, function()
+		searchStroke.Color = self.Theme.Accent
+		searchStroke.Transparency = 0.1
+	end)
+	utility:Connect(self.Connections, searchBox.FocusLost, function()
+		searchStroke.Color = self.Theme.Stroke
+		searchStroke.Transparency = 0.5
+	end)
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
 		if self.Enabled == false then
@@ -209,6 +233,18 @@ function Dropdown.new(context, section, options)
 		end
 
 		self:SetExpanded(not self.Expanded)
+	end)
+	utility:Connect(self.Connections, button.MouseEnter, function()
+		if self.Enabled then
+			utility:TweenTracked(self.Tweens, "Button", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Card })
+			buttonStroke.Color = self.Theme.Accent
+		end
+	end)
+	utility:Connect(self.Connections, button.MouseLeave, function()
+		if self.Enabled and not self.Expanded then
+			utility:TweenTracked(self.Tweens, "Button", button, utility.Motion.Hover, { BackgroundColor3 = self.Theme.Background })
+			buttonStroke.Color = self.Theme.Stroke
+		end
 	end)
 
 	utility:Connect(self.Connections, button:GetPropertyChangedSignal("AbsolutePosition"), function()
@@ -258,7 +294,7 @@ function Dropdown:_GetOverlayGui()
 	return gui
 end
 
-function Dropdown:_PositionOverlay()
+function Dropdown:_PositionOverlay(heightOverride)
 	if not self.Expanded or not self.List or not self.List.Parent then
 		return
 	end
@@ -266,7 +302,7 @@ function Dropdown:_PositionOverlay()
 	local camera = workspace.CurrentCamera
 	local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
 	local width = math.max(self.Button.AbsoluteSize.X, 1)
-	local height = self.List.Size.Y.Offset
+	local height = heightOverride or self.List.Size.Y.Offset
 	local margin = 8
 	local x = math.clamp(self.Button.AbsolutePosition.X, margin, math.max(margin, viewport.X - width - margin))
 	local below = self.Button.AbsolutePosition.Y + self.Button.AbsoluteSize.Y + 6
@@ -294,17 +330,31 @@ function Dropdown:_ResizeExpanded(instant)
 
 	self.Instance.Size = UDim2.new(1, 0, 0, self.BaseHeight)
 
+	local tween
 	if instant then
+		local current = self.Tweens.Expand
+		if current then
+			current:Cancel()
+			self.Tweens.Expand = nil
+		end
 		self.List.Size = targetSize
 	else
-		local style = self.Expanded and Enum.EasingStyle.Back or Enum.EasingStyle.Quad
 		self.List.Size = UDim2.fromOffset(width, self.List.Size.Y.Offset)
-		self.Utility:Tween(self.List, self.Utility.Motion.Standard, { Size = targetSize }, style)
+		tween = self.Utility:TweenTracked(
+			self.Tweens,
+			"Expand",
+			self.List,
+			self.Utility.Motion.Overlay,
+			{ Size = targetSize },
+			self.Expanded and Enum.EasingStyle.Quart or Enum.EasingStyle.Quad,
+			self.Expanded and Enum.EasingDirection.Out or Enum.EasingDirection.In
+		)
 	end
 
 	if self.Expanded then
-		self:_PositionOverlay()
+		self:_PositionOverlay(height)
 	end
+	return tween
 end
 
 function Dropdown:_SetKeyboardSelection(index)
@@ -468,6 +518,8 @@ function Dropdown:SetExpanded(value, instant)
 	if expanded and self.Library._expandedDropdown and self.Library._expandedDropdown ~= self then
 		self.Library._expandedDropdown:SetExpanded(false, true)
 	end
+	self._expansionToken = (self._expansionToken or 0) + 1
+	local token = self._expansionToken
 	self.Expanded = expanded
 	if self.Expanded then
 		self.Library._expandedDropdown = self
@@ -496,13 +548,39 @@ function Dropdown:SetExpanded(value, instant)
 		self:_FilterOptions("")
 	end
 
-	self.Arrow.Text = self.Expanded and "^" or "v"
+	self.Arrow.Text = "v"
+	if instant then
+		self.Arrow.Rotation = self.Expanded and 180 or 0
+	else
+		self.Utility:TweenTracked(self.Tweens, "Arrow", self.Arrow, self.Utility.Motion.Standard, {
+			Rotation = self.Expanded and 180 or 0,
+		})
+	end
+	self.ButtonStroke.Color = self.Expanded and self.Theme.Accent or self.Theme.Stroke
+	if not self.Expanded then
+		self.Utility:TweenTracked(self.Tweens, "Button", self.Button, self.Utility.Motion.Hover, {
+			BackgroundColor3 = self.Theme.Background,
+		})
+	end
 	self.Scroll.CanvasPosition = Vector2.new(0, 0)
+	if self.Expanded and not instant then
+		self.List.Size = UDim2.fromOffset(math.max(self.Button.AbsoluteSize.X, self.Instance.AbsoluteSize.X, 1), 0)
+	end
 	self:_ResizeExpanded(instant)
 	if not self.Expanded then
-		self.List.Visible = false
-		self.List.Parent = self.Instance
-		self.List.Position = UDim2.fromOffset(0, self.ListTop)
+		local function finalizeClose()
+			if self._expansionToken ~= token or self.Expanded or not self.List then
+				return
+			end
+			self.List.Visible = false
+			self.List.Parent = self.Instance
+			self.List.Position = UDim2.fromOffset(0, self.ListTop)
+		end
+		if instant then
+			finalizeClose()
+		else
+			task.delay(self.Utility.Motion.Overlay, finalizeClose)
+		end
 	end
 	return self
 end
@@ -662,6 +740,7 @@ function Dropdown:SetTheme(theme)
 	self.Button.BackgroundColor3 = theme.Background
 	self.ValueLabel.TextColor3 = theme.MutedText
 	self.Arrow.TextColor3 = theme.Accent
+	self.Utility:SetIconColor(self.IconLabel, theme.Accent)
 	self.List.BackgroundColor3 = theme.Background
 	self.SearchBox.BackgroundColor3 = theme.Card
 	self.SearchBox.TextColor3 = theme.Text
@@ -675,6 +754,10 @@ function Dropdown:SetTheme(theme)
 
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
 	self.Utility:ApplyStrokeTheme(self.List, theme.Stroke)
+	self.ButtonStroke.Color = self.Expanded and theme.Accent or theme.Stroke
+	if self.SearchBox:IsFocused() then
+		self.SearchStroke.Color = theme.Accent
+	end
 	self:SetValue(self.Value, false)
 	self:SetEnabled(self.Enabled)
 	return self
@@ -687,6 +770,7 @@ function Dropdown:Destroy()
 
 	self:SetExpanded(false, true)
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Library:_UnregisterDependencies(self)
 	self.Context.Flags:Unregister(self.Library, self.Flag, self)
 	self:_EndInteraction()

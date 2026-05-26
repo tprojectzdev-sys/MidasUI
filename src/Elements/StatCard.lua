@@ -36,16 +36,12 @@ function StatCard.new(context, section, options)
 	})
 	utility:Corner(frame, 9)
 	utility:Stroke(frame, theme.Stroke, 0.55)
-	local icon = utility:Create("TextLabel", {
+	local icon = utility:CreateIcon(frame, options.Icon, {
 		Name = "Icon",
 		Position = UDim2.fromOffset(12, 0),
 		Size = UDim2.fromOffset(options.Icon and 24 or 0, height),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold,
-		Text = options.Icon and utility:IconText(options.Icon) or "",
-		TextColor3 = theme.Accent,
+		Color = theme.Accent,
 		TextSize = 14,
-		Parent = frame,
 	})
 	local left = options.Icon and 43 or 12
 	local label = utility:Create("TextLabel", {
@@ -121,7 +117,7 @@ function StatCard:SetIcon(icon)
 		return self
 	end
 	self.Icon = icon
-	self.IconLabel.Text = icon and self.Utility:IconText(icon) or ""
+	self.Utility:SetIcon(self.IconLabel, icon, self.Theme.Accent)
 	return self
 end
 
@@ -133,7 +129,7 @@ function StatCard:SetEnabled(enabled)
 	local transparency = self.Enabled and 0 or 0.45
 	self.Label.TextTransparency = transparency
 	self.ValueLabel.TextTransparency = transparency
-	self.IconLabel.TextTransparency = transparency
+	self.Utility:SetIconTransparency(self.IconLabel, transparency)
 	self.Instance.BackgroundTransparency = self.Enabled and 0 or 0.32
 	return self
 end
@@ -175,7 +171,7 @@ function StatCard:SetTheme(theme)
 	end
 	self.Theme = theme
 	self.Instance.BackgroundColor3 = theme.Background
-	self.IconLabel.TextColor3 = theme.Accent
+	self.Utility:SetIconColor(self.IconLabel, theme.Accent)
 	self.Label.TextColor3 = theme.MutedText
 	self.ValueLabel.TextColor3 = theme.Text
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)

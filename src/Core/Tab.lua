@@ -13,6 +13,7 @@ function Tab.new(context, window, options)
 		Icon = options.Icon or "",
 		Sections = {},
 		Connections = {},
+		Tweens = {},
 	}, Tab)
 
 	local theme = self.Theme
@@ -31,16 +32,12 @@ function Tab.new(context, window, options)
 	})
 	utility:Corner(button, 8)
 
-	local icon = utility:Create("TextLabel", {
+	local icon = utility:CreateIcon(button, self.Icon, {
 		Name = "Icon",
 		Position = UDim2.fromOffset(10, template.Compact and 6 or 8),
 		Size = UDim2.fromOffset(22, template.Compact and 21 or 22),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold,
-		Text = utility:IconText(self.Icon),
-		TextColor3 = theme.MutedText,
+		Color = theme.MutedText,
 		TextSize = template.Compact and 12 or 13,
-		Parent = button,
 	})
 
 	local label = utility:Create("TextLabel", {
@@ -83,12 +80,21 @@ function Tab.new(context, window, options)
 	self.CanvasConnection = utility:BindCanvas(page, pageList, self.CanvasPadding)
 	self._themeObjects = {
 		{ button, "BackgroundColor3", "Card" },
-		{ icon, "TextColor3", "MutedText" },
 		{ label, "TextColor3", "MutedText" },
 	}
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
 		window:SelectTab(self)
+	end)
+	utility:Connect(self.Connections, button.MouseEnter, function()
+		if window.ActiveTab ~= self then
+			utility:TweenTracked(self.Tweens, "Surface", button, utility.Motion.Hover, { BackgroundTransparency = 0.55 })
+		end
+	end)
+	utility:Connect(self.Connections, button.MouseLeave, function()
+		if window.ActiveTab ~= self then
+			utility:TweenTracked(self.Tweens, "Surface", button, utility.Motion.Hover, { BackgroundTransparency = 1 })
+		end
 	end)
 
 	return self
@@ -112,8 +118,10 @@ function Tab:SetActive(active)
 	end
 
 	self.Page.Visible = active
-	self.Button.BackgroundTransparency = active and 0 or 1
-	self.IconLabel.TextColor3 = active and self.Theme.Accent or self.Theme.MutedText
+	self.Utility:TweenTracked(self.Tweens, "Surface", self.Button, self.Utility.Motion.Standard, {
+		BackgroundTransparency = active and 0 or 1,
+	})
+	self.Utility:SetIconColor(self.IconLabel, active and self.Theme.Accent or self.Theme.MutedText)
 	self.Label.TextColor3 = active and self.Theme.Text or self.Theme.MutedText
 	return self
 end
@@ -201,6 +209,7 @@ function Tab:Destroy()
 	end
 
 	self.Destroyed = true
+	self.Utility:CancelTweens(self.Tweens)
 	self.Utility:DisconnectAll(self.Connections)
 
 	if self.CanvasConnection then

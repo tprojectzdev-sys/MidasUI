@@ -14,6 +14,7 @@ $modules = @(
 	"Core/Notify",
 	"Core/Tooltip",
 	"Core/Keybinds",
+	"Core/Shortcuts",
 	"Core/Dialog",
 	"Core/Commands",
 	"Core/CommandPalette",
@@ -36,7 +37,7 @@ $modules = @(
 )
 
 $builder = [System.Text.StringBuilder]::new()
-[void]$builder.AppendLine("-- MidasUI V1.8 single-file bundle")
+[void]$builder.AppendLine("-- MidasUI V1.9 single-file bundle")
 [void]$builder.AppendLine("-- Generated from src modules by tools/build-dist.ps1. Edit src/ first.")
 [void]$builder.AppendLine("local ModuleCache = {}")
 [void]$builder.AppendLine("local ModuleSources = {}")
@@ -75,6 +76,7 @@ local Config = requireModule("Core/Config")
 local Notify = requireModule("Core/Notify")
 local Tooltip = requireModule("Core/Tooltip")
 local Keybinds = requireModule("Core/Keybinds")
+local Shortcuts = requireModule("Core/Shortcuts")
 local Dialog = requireModule("Core/Dialog")
 local Templates = requireModule("Core/Templates")
 local Commands = requireModule("Core/Commands")

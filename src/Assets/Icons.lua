@@ -17,6 +17,12 @@ Icons.Map = {
 	check = "Y",
 	bell = "B",
 	menu = "M",
+	sparkle = "*",
+	palette = "P",
+	command = ">",
+	notification = "!",
+	dropdown = "v",
+	dialog = "D",
 }
 
 return Icons

@@ -4,9 +4,14 @@ local UserInputService = game:GetService("UserInputService")
 local Utility = {}
 
 Utility.Motion = {
-	Fast = 0.11,
-	Standard = 0.17,
+	Press = 0.08,
+	Fast = 0.12,
+	Hover = 0.14,
+	Standard = 0.18,
+	Toggle = 0.2,
+	Overlay = 0.22,
 	Reveal = 0.28,
+	Window = 0.3,
 	Exit = 0.2,
 	IntroDrop = 0.34,
 }
@@ -29,6 +34,7 @@ Utility.IconGlyphs = {
 	plus = "+",
 	check = "Y",
 }
+Utility.CustomIcons = {}
 
 function Utility:Create(className, properties, children)
 	local object = Instance.new(className)
@@ -118,17 +124,159 @@ function Utility:CancelTweens(store)
 	end
 end
 
-function Utility:IconText(icon)
+function Utility:RegisterIcon(name, definition)
+	if typeof(name) ~= "string" or name == "" then
+		return false, "Icon name must be a non-empty string"
+	end
+
+	local key = string.lower(name)
+	if typeof(definition) == "number" then
+		self.CustomIcons[key] = { Image = "rbxassetid://" .. tostring(definition) }
+	elseif typeof(definition) == "string" and string.find(definition, "^rbxassetid://") then
+		self.CustomIcons[key] = { Image = definition }
+	elseif typeof(definition) == "string" and definition ~= "" then
+		self.CustomIcons[key] = { Text = definition }
+	elseif typeof(definition) == "table" then
+		local image = definition.Image or definition.AssetId
+		if typeof(image) == "number" then
+			image = "rbxassetid://" .. tostring(image)
+		end
+		if typeof(image) == "string" and image ~= "" then
+			local rectOffset = definition.ImageRectOffset or definition.RectOffset
+			local rectSize = definition.ImageRectSize or definition.RectSize
+			self.CustomIcons[key] = {
+				Image = image,
+				ImageRectOffset = typeof(rectOffset) == "Vector2" and rectOffset or nil,
+				ImageRectSize = typeof(rectSize) == "Vector2" and rectSize or nil,
+			}
+		elseif typeof(definition.Text) == "string" and definition.Text ~= "" then
+			self.CustomIcons[key] = { Text = definition.Text }
+		else
+			return false, "Icon definition must contain Image, AssetId, or Text"
+		end
+	else
+		return false, "Icon definition must be text, asset id, or a definition table"
+	end
+	return true, key
+end
+
+function Utility:ResolveIcon(icon)
 	if typeof(icon) == "number" then
-		return ""
+		return { Image = "rbxassetid://" .. tostring(icon) }
 	end
-
-	if typeof(icon) == "string" and icon ~= "" then
-		local lower = string.lower(icon)
-		return self.IconGlyphs[lower] or string.upper(string.sub(icon, 1, 1))
+	if typeof(icon) == "table" then
+		local temporaryName = "__direct"
+		local previous = self.CustomIcons[temporaryName]
+		local ok = self:RegisterIcon(temporaryName, icon)
+		local resolved = ok and self.CustomIcons[temporaryName] or nil
+		self.CustomIcons[temporaryName] = previous
+		return resolved
 	end
+	if typeof(icon) ~= "string" or icon == "" then
+		return nil
+	end
+	if string.find(icon, "^rbxassetid://") then
+		return { Image = icon }
+	end
+	local lower = string.lower(icon)
+	if self.CustomIcons[lower] then
+		return self.CustomIcons[lower]
+	end
+	if self.IconGlyphs[lower] then
+		return { Text = self.IconGlyphs[lower] }
+	end
+	return { Text = string.upper(string.sub(icon, 1, 1)) }
+end
 
-	return ""
+function Utility:IconText(icon)
+	local resolved = self:ResolveIcon(icon)
+	return resolved and resolved.Text or ""
+end
+
+function Utility:CreateIcon(parent, icon, properties)
+	properties = properties or {}
+	local color = properties.Color or Color3.new(1, 1, 1)
+	local root = self:Create("Frame", {
+		Name = properties.Name or "Icon",
+		Position = properties.Position or UDim2.fromOffset(0, 0),
+		Size = properties.Size or UDim2.fromOffset(18, 18),
+		BackgroundTransparency = 1,
+		ZIndex = properties.ZIndex or (parent and parent.ZIndex or 1),
+		Parent = parent,
+	})
+	local glyph = self:Create("TextLabel", {
+		Name = "Glyph",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Font = properties.Font or Enum.Font.GothamBold,
+		Text = "",
+		TextColor3 = color,
+		TextSize = properties.TextSize or 13,
+		ZIndex = root.ZIndex,
+		Parent = root,
+	})
+	local image = self:Create("ImageLabel", {
+		Name = "Image",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Image = "",
+		ImageColor3 = color,
+		ScaleType = Enum.ScaleType.Fit,
+		Visible = false,
+		ZIndex = root.ZIndex,
+		Parent = root,
+	})
+	self:SetIcon(root, icon, color)
+	return root
+end
+
+function Utility:SetIcon(root, icon, color)
+	if not root then
+		return
+	end
+	local resolved = self:ResolveIcon(icon)
+	local glyph = root:FindFirstChild("Glyph")
+	local image = root:FindFirstChild("Image")
+	if glyph then
+		glyph.Text = resolved and resolved.Text or ""
+		glyph.TextColor3 = color or glyph.TextColor3
+		glyph.Visible = resolved ~= nil and resolved.Text ~= nil
+	end
+	if image then
+		image.Image = resolved and resolved.Image or ""
+		image.ImageColor3 = color or image.ImageColor3
+		image.ImageRectOffset = resolved and resolved.ImageRectOffset or Vector2.new(0, 0)
+		image.ImageRectSize = resolved and resolved.ImageRectSize or Vector2.new(0, 0)
+		image.Visible = resolved ~= nil and resolved.Image ~= nil
+	end
+end
+
+function Utility:SetIconColor(root, color)
+	if not root then
+		return
+	end
+	local glyph = root:FindFirstChild("Glyph")
+	local image = root:FindFirstChild("Image")
+	if glyph then
+		glyph.TextColor3 = color
+	end
+	if image then
+		image.ImageColor3 = color
+	end
+end
+
+function Utility:SetIconTransparency(root, transparency)
+	if not root then
+		return
+	end
+	local glyph = root:FindFirstChild("Glyph")
+	local image = root:FindFirstChild("Image")
+	if glyph then
+		glyph.TextTransparency = transparency
+	end
+	if image then
+		image.ImageTransparency = transparency
+	end
 end
 
 function Utility:CreateCrownMark(parent, theme, size)
@@ -277,6 +425,9 @@ function Utility:MakeDraggable(handle, target, connections, options)
 		dragging = true
 		dragStart = input.Position
 		startPosition = target.Position
+		if options.OnDragStart then
+			options.OnDragStart()
+		end
 	end)
 
 	self:Connect(connections, UserInputService.InputChanged, function(input)
@@ -289,6 +440,9 @@ function Utility:MakeDraggable(handle, target, connections, options)
 		end
 
 		local delta = input.Position - dragStart
+		if options.OnDragMove then
+			options.OnDragMove(delta)
+		end
 		target.Position = UDim2.new(
 			startPosition.X.Scale,
 			startPosition.X.Offset + delta.X,
@@ -304,6 +458,9 @@ function Utility:MakeDraggable(handle, target, connections, options)
 	self:Connect(connections, UserInputService.InputEnded, function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
+			if options.OnDragEnd then
+				options.OnDragEnd()
+			end
 		end
 	end)
 end

@@ -1,6 +1,6 @@
 # Templates And Workflow Layouts
 
-V1.8 continues the optional layout presets through the existing window and section API. A template adjusts spacing, density, and preferred starting size; it does not add application behavior or replace the element API. Commands make larger template-based interfaces faster to operate.
+V1.9 continues the optional layout presets through the existing window and section API. A template adjusts spacing, density, and preferred starting size; it does not add application behavior or replace the element API. Commands and optional shortcuts make larger template-based interfaces faster to operate.
 
 ```lua
 local Window = MidasUI:CreateWindow({

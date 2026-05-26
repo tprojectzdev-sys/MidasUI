@@ -1,6 +1,6 @@
 # MidasUI
 
-MidasUI is a premium-styled Roblox Luau UI library for themed windows, controls, notifications, and dialogs. V1.8 adds command-palette discovery, indexed navigation, keyboard workflows, and searchable long dropdowns while preserving the stabilized API.
+MidasUI is a premium-styled Roblox Luau UI library for themed windows, controls, notifications, and dialogs. V1.9 adds owned global shortcuts, an optional floating launcher, command-palette recents/grouping, focus polish, and runtime self-testing while preserving existing APIs.
 
 ## Get Started
 
@@ -13,7 +13,7 @@ local MidasUI = loadstring(game:HttpGet("RAW_DIST_URL_HERE"))()
 Then create a window:
 
 ```lua
-local Window = MidasUI:CreateWindow({ Title = "Settings", Theme = "DarkGold" })
+local Window = MidasUI:CreateWindow({ Title = "Settings", Theme = "DarkGold", ToggleKey = Enum.KeyCode.RightControl })
 local Main = Window:CreateTab("Main")
 local General = Main:CreateSection("General")
 General:CreateToggle({ Name = "Enabled", Flag = "enabled" })
@@ -33,7 +33,9 @@ local MidasUI = require(path.To.MidasUI.Init)
 - Windows with tabs, sections, scrolling, animated show/hide, resizing, and complete minimize/restore.
 - Optional `Default`, `FarmingDashboard`, and `PowerPanel` layout templates.
 - Button, toggle, precision slider, dropdown, input, keybind, paragraph, divider, progress bar, stat card, log panel, callout, and action-row controls.
-- `Ctrl+K` command palette with registered actions and indexed navigation across large interfaces.
+- Configurable `Ctrl+K` command palette with recent actions, grouping, and indexed navigation.
+- Optional menu toggle shortcut and draggable floating crown launcher.
+- Runtime self-test/report helpers and owned cleanup/unload paths.
 - Controllers, flags, dependencies, config profiles, runtime themes, dialogs, notifications, tooltips, and opt-in diagnostics.
 
 ## Basic Example
@@ -44,6 +46,8 @@ local MidasUI = loadstring(game:HttpGet("RAW_DIST_URL_HERE"))()
 local Window = MidasUI:CreateWindow({
 	Title = "Settings",
 	Theme = "DarkGold",
+	ToggleKey = Enum.KeyCode.RightControl,
+	Launcher = true,
 })
 
 local Main = Window:CreateTab({ Name = "Main", Icon = "home" })
@@ -73,7 +77,7 @@ Window:RegisterCommand({
 
 The shorter runnable beginner sample is [src/Example.lua](src/Example.lua). The full runtime test surface is [src/Showcase.lua](src/Showcase.lua).
 
-For repeated V1.8 runtime QA, run the current Showcase script: it destroys its preceding stored showcase instance and loads the raw dist URL with a cache-busting query. Its diagnostics section also provides an explicit full cleanup action before a fresh test.
+For repeated V1.9 runtime QA, run the current Showcase script: it unloads its preceding stored showcase instance and loads the raw dist URL with a cache-busting query. Its diagnostics section provides runtime reports and explicit cleanup before a fresh test.
 
 ## Documentation
 
@@ -84,7 +88,9 @@ For repeated V1.8 runtime QA, run the current Showcase script: it destroys its p
 - [Themes](docs/THEMES.md)
 - [Templates and workflow layouts](docs/TEMPLATES.md)
 - [Commands, search, and navigation](docs/COMMANDS.md)
+- [Shortcuts and launcher](docs/SHORTCUTS.md)
 - [Showcase and manual QA](docs/SHOWCASE.md)
+- [V1.9 motion, visual identity, and custom icons](docs/POLISH.md)
 - [Changelog](docs/CHANGELOG.md)
 
 ## Known Limitations

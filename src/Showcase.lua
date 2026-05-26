@@ -15,7 +15,7 @@ local function destroyShowcase()
 	if runtime.__MidasUIShowcaseRuntime == MidasUI then
 		runtime.__MidasUIShowcaseRuntime = nil
 	end
-	MidasUI:Destroy()
+	MidasUI:Unload()
 end
 
 print("MidasUI:", MidasUI)
@@ -31,6 +31,18 @@ for _, method in ipairs({
 	"OpenCommandPalette",
 	"CloseCommandPalette",
 	"ToggleCommandPalette",
+	"SetCommandPaletteShortcut",
+	"ClearCommandPaletteShortcut",
+	"SetMenuToggleKey",
+	"ClearMenuToggleKey",
+	"RegisterIcon",
+	"RegisterIcons",
+	"GetRuntimeReport",
+	"RunSelfTest",
+	"PrintRuntimeReport",
+	"DestroyAllWindows",
+	"IsLoaded",
+	"Unload",
 	"OnThemeChanged",
 }) do
 	print(method .. ":", typeof(MidasUI[method]) == "function")
@@ -59,13 +71,24 @@ MidasUI:RegisterTheme("PartialGold", {
 	Accent = Color3.fromRGB(244, 205, 112),
 })
 
+MidasUI:RegisterIcons({
+	gem = { Text = "G" },
+	goldStar = {
+		Image = "rbxassetid://3926305904",
+		ImageRectOffset = Vector2.new(4, 4),
+		ImageRectSize = Vector2.new(36, 36),
+	},
+})
+
 local Window = MidasUI:CreateWindow({
-	Title = "MidasUI V1.8 Command Showcase",
-	Subtitle = "Searchable actions, navigation, dashboard workflow, and dense panel tests",
+	Title = "MidasUI V1.9 Shortcut Showcase",
+	Subtitle = "Launcher, shortcut ownership, palette recents, accessibility, and runtime checks",
 	Icon = "crown",
 	Theme = "DarkGold",
 	Size = UDim2.fromOffset(740, 550),
 	Intro = true,
+	ToggleKey = Enum.KeyCode.RightControl,
+	Launcher = true,
 	SaveConfig = true,
 	ConfigFolder = "MidasShowcase",
 })
@@ -402,16 +425,16 @@ Runtime:CreateButton({
 	end,
 })
 
-local Presets = Main:CreateSection("V1.8 Searchable Workflow Templates")
+local Presets = Main:CreateSection("V1.8 Workflow Templates Retained")
 Presets:CreateParagraph({
-	Text = "Open the optional dashboard or compact panel presets, then use Ctrl+K to find their scoped actions.",
+	Text = "Existing workflow templates remain covered; use the current palette shortcut to find their scoped actions.",
 })
 
 local DiscoveryTab = Window:CreateTab({ Name = "Discovery", Icon = "search" })
 local Discovery = DiscoveryTab:CreateSection("Command Palette and Search")
 
 Discovery:CreateParagraph({
-	Text = "Press Ctrl+K, type a command or control name, use Up/Down, and press Enter. Escape closes the active overlay.",
+	Text = "Ctrl+K is the default palette shortcut. Use Up/Down and Enter; executed commands appear in Recent the next time the palette opens.",
 })
 Discovery:CreateButton({
 	Name = "Open Command Palette",
@@ -429,6 +452,44 @@ Discovery:CreateButton({
 	Name = "Toggle Command Palette",
 	Callback = function()
 		MidasUI:ToggleCommandPalette()
+	end,
+})
+Discovery:CreateButton({
+	Name = "Set Palette Shortcut: Shift+K",
+	Callback = function()
+		local ok, shortcut = MidasUI:SetCommandPaletteShortcut("Shift+K")
+		MidasUI:Notify({ Title = "Shortcut", Content = ok and ("Palette: " .. shortcut) or "Rejected shortcut", Duration = 2 })
+	end,
+})
+Discovery:CreateButton({
+	Name = "Restore Palette Shortcut: Ctrl+K",
+	Callback = function()
+		MidasUI:SetCommandPaletteShortcut("Ctrl+K")
+	end,
+})
+Discovery:CreateButton({
+	Name = "Disable / Restore Palette Shortcut",
+	Callback = function()
+		MidasUI:ClearCommandPaletteShortcut()
+		MidasUI:Notify({ Title = "Shortcut", Content = "Palette shortcut disabled for two seconds.", Duration = 2 })
+		task.delay(2, function()
+			if MidasUI:IsLoaded() then
+				MidasUI:SetCommandPaletteShortcut("Ctrl+K")
+			end
+		end)
+	end,
+})
+Discovery:CreateButton({
+	Name = "Invalid Shortcut Warning",
+	Callback = function()
+		MidasUI:SetCommandPaletteShortcut("Ctrl+NotAKey")
+	end,
+})
+Discovery:CreateButton({
+	Name = "Open Recent Commands",
+	Tooltip = "Run palette commands first, then reopen with an empty query to see recent ordering.",
+	Callback = function()
+		MidasUI:OpenCommandPalette()
 	end,
 })
 Discovery:CreateButton({
@@ -536,7 +597,8 @@ Dialogs:CreateButton({
 		Window:Dialog({
 			Type = "Info",
 			Title = "Information",
-			Content = "This V1.8 dialog must render above the restored window.",
+			Content = "This V1.9 dialog must render above the restored window.",
+			Icon = "info",
 		})
 	end,
 })
@@ -550,6 +612,7 @@ Dialogs:CreateButton({
 			MidasUI:Confirm({
 				Title = "Modal Priority",
 				Content = "The palette should be gone and this dialog should be above the window.",
+				Icon = "dialog",
 			})
 		end)
 	end,
@@ -561,6 +624,7 @@ Dialogs:CreateButton({
 		MidasUI:Confirm({
 			Title = "Confirm Action",
 			Content = "Run the confirm callback?",
+			Icon = "check",
 			OnConfirm = function()
 				MidasUI:Notify({ Title = "Confirmed", Content = "Confirm callback ran.", Duration = 2 })
 			end,
@@ -577,8 +641,9 @@ Dialogs:CreateButton({
 		MidasUI:Prompt({
 			Title = "Rename Window",
 			Content = "Enter a new window title.",
+			Icon = "gem",
 			Placeholder = "Window title",
-			Default = "MidasUI V1.8",
+			Default = "MidasUI V1.9",
 			OnConfirm = function(text)
 				Window:SetTitle(text)
 			end,
@@ -659,11 +724,49 @@ Themes:CreateParagraph({
 
 Themes:CreateDropdown({
 	Name = "Runtime Theme",
+	Icon = "palette",
 	Flag = "theme",
 	Options = { "DarkGold", "Midnight", "BlackWhite", "ObsidianGold", "PartialGold" },
 	Default = "DarkGold",
 	Callback = function(themeName)
 		MidasUI:SetTheme(themeName)
+	end,
+})
+
+local Icons = Settings:CreateSection("Icon Registry and Surface Depth")
+Icons:CreateStatusCard({
+	Name = "Custom Glyph",
+	Value = "Registered",
+	Icon = "gem",
+})
+Icons:CreateCallout({
+	Name = "Asset Icon",
+	Content = "A registered sprite definition follows the active accent token.",
+	Icon = "goldStar",
+	Type = "Success",
+})
+Icons:CreateDropdown({
+	Name = "Icon Dropdown",
+	Icon = "goldStar",
+	Options = { "Premium", "Compact", "Minimal" },
+	Default = "Premium",
+})
+Icons:CreateButton({
+	Name = "Icon Notification and Dialog Test",
+	Icon = "goldStar",
+	Callback = function()
+		MidasUI:Notify({
+			Title = "Custom Icon",
+			Content = "Notification styling and registered image rendering are active.",
+			Icon = "goldStar",
+			Duration = 3,
+		})
+		Window:Dialog({
+			Type = "Info",
+			Title = "Icon Dialog",
+			Content = "This modal tests icon color binding and depth.",
+			Icon = "gem",
+		})
 	end,
 })
 
@@ -726,7 +829,7 @@ Profiles:CreateButton({
 	Callback = function()
 		local state = MidasUI:GetDebugState()
 		if state then
-			print("MidasUI Debug:", state.Version, state.Theme, state.WindowCount, state.FlagCount, state.KeybindCount, state.CommandCount, state.SearchItemCount, state.HasOpenCommandPalette, state.HasExpandedDropdown, state.ActiveOverlay)
+			print("MidasUI Debug:", state.Version, state.Theme, state.WindowCount, state.FlagCount, state.KeybindCount, state.ShortcutCount, state.CommandCount, state.SearchItemCount, state.CommandPaletteShortcut, state.MenuToggleShortcut, state.ActiveOverlay)
 			local publicAPIs = state.PublicAPIs or {}
 			local function hasAPI(name)
 				if publicAPIs[name] ~= nil then
@@ -734,13 +837,25 @@ Profiles:CreateButton({
 				end
 				return typeof(MidasUI[name]) == "function"
 			end
-			print("V1.8 API:", hasAPI("RegisterCommand"), hasAPI("UnregisterCommand"), hasAPI("RunCommand"), hasAPI("Search"), hasAPI("SearchCommands"), hasAPI("NavigateTo"), hasAPI("OpenCommandPalette"), hasAPI("CloseCommandPalette"), hasAPI("ToggleCommandPalette"), hasAPI("OnThemeChanged"))
+			print("V1.9 API:", hasAPI("RegisterCommand"), hasAPI("Search"), hasAPI("SetCommandPaletteShortcut"), hasAPI("SetMenuToggleKey"), hasAPI("GetRuntimeReport"), hasAPI("RunSelfTest"), hasAPI("DestroyAllWindows"), hasAPI("Unload"), hasAPI("OnThemeChanged"))
 		end
 	end,
 })
 
 Profiles:CreateButton({
-	Name = "Destroy Showcase Runtime",
+	Name = "Run Runtime Self-Test",
+	Callback = function()
+		local report = MidasUI:PrintRuntimeReport()
+		MidasUI:Notify({
+			Title = "Self-Test",
+			Content = report.Passed and "V1.9 API and component checks passed." or "Self-test reported missing surface.",
+			Duration = 3,
+		})
+	end,
+})
+
+Profiles:CreateButton({
+	Name = "Unload Showcase Runtime",
 	Tooltip = "Removes all showcase windows, overlays, commands, and global listeners before a fresh run.",
 	Callback = destroyShowcase,
 })
@@ -751,6 +866,7 @@ Profiles:CreateButton({
 		local notification = MidasUI:Notify({
 			Title = "Controller",
 			Content = "This notification closes after one second.",
+			Icon = "notification",
 			Duration = 10,
 		})
 		task.delay(1, function()
@@ -767,6 +883,7 @@ Profiles:CreateButton({
 				MidasUI:Notify({
 					Title = "Motion " .. index,
 					Content = "Slide-in, settle, and clean exit.",
+					Icon = index == 2 and "goldStar" or "bell",
 					Duration = 2 + index,
 				})
 			end)
@@ -784,6 +901,7 @@ local longOptions = {
 
 Stress:CreateDropdown({
 	Name = "Long Dropdown",
+	Icon = "dropdown",
 	Flag = "long_dropdown",
 	Options = longOptions,
 	Default = "Alpha",
@@ -812,7 +930,7 @@ Keybinds:CreateInput({
 })
 
 Keybinds:CreateParagraph({
-	Text = "While this input is focused, Ctrl+K and existing keybinds should not interrupt ordinary typing.",
+	Text = "While this input is focused, palette/menu shortcuts and existing keybinds should not interrupt ordinary typing. RightControl toggles this showcase window outside text entry.",
 })
 
 Keybinds:CreateKeybind({
@@ -838,7 +956,7 @@ Window:RegisterCommand({
 Window:RegisterCommand({
 	Id = "navigate_discovery",
 	Title = "Navigate: Discovery Tab",
-	Description = "Jump to V1.8 command and search tests.",
+	Description = "Jump to V1.9 command, shortcut, and recent-command tests.",
 	Category = "Navigate",
 	Keywords = { "palette", "search" },
 	Callback = function()
@@ -920,8 +1038,8 @@ Window:RegisterCommand({
 })
 Window:RegisterCommand({
 	Id = "runtime_destroy",
-	Title = "Runtime: Destroy Showcase",
-	Description = "Release all V1.8 QA windows, commands, overlays, and listeners.",
+	Title = "Runtime: Unload Showcase",
+	Description = "Release all V1.9 QA windows, commands, overlays, shortcuts, and listeners.",
 	Category = "QA",
 	Keywords = { "cleanup", "reload", "duplicate keybind" },
 	Callback = destroyShowcase,
@@ -942,8 +1060,8 @@ task.delay(0.75, function()
 		return
 	end
 	MidasUI:Notify({
-		Title = "MidasUI V1.8",
-		Content = "Press Ctrl+K to discover commands, controls, and workflow windows.",
+		Title = "MidasUI V1.9",
+		Content = "Press Ctrl+K for commands or RightControl to hide/show; the crown launcher restores hidden UI.",
 		Duration = 4,
 	})
 end)

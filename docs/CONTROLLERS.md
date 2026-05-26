@@ -59,7 +59,7 @@ Do not bind unlike value types to the same flag. For example, a toggle and slide
 
 `Mode = "Hold"` invokes `Callback(true, keyCode)` on press and `Callback(false, keyCode)` on release. Disabling, rebinding, or destroying an active hold binding sends the release callback.
 
-Normal keybind triggering is blocked while a Roblox `TextBox`, command palette, dialog, or expanded dropdown owns keyboard interaction. Select the keybind button to listen for a new binding; `Escape` cancels and `Backspace` clears it.
+Normal keybind triggering is routed through the V1.9 shortcut dispatcher and blocked while a Roblox `TextBox`, command palette, dialog, or expanded dropdown owns keyboard interaction. Select the keybind button to listen for a new binding; `Escape` cancels and `Backspace` clears it. An official menu or palette shortcut consumes its configured chord before an element keybind with the same chord.
 
 ## Dependencies
 

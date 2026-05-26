@@ -94,11 +94,12 @@ function Keybind.new(context, section, options)
 		Parent = row,
 	})
 	utility:Corner(button, 8)
-	utility:Stroke(button, theme.Stroke, 0.45)
+	local buttonStroke = utility:Stroke(button, theme.Stroke, 0.45)
 
 	self.Instance = row
 	self.Label = label
 	self.Button = button
+	self.ButtonStroke = buttonStroke
 
 	utility:Connect(self.Connections, button.MouseButton1Click, function()
 		if self.Enabled == false then
@@ -174,6 +175,8 @@ function Keybind:StartListening()
 
 	self.Button.Text = "..."
 	self.Button.TextColor3 = self.Theme.Accent
+	self.ButtonStroke.Color = self.Theme.Accent
+	self.ButtonStroke.Transparency = 0.08
 	return self
 end
 
@@ -193,6 +196,8 @@ function Keybind:StopListening()
 	end
 
 	self:Refresh()
+	self.ButtonStroke.Color = self.Theme.Stroke
+	self.ButtonStroke.Transparency = 0.45
 	return self
 end
 
@@ -331,6 +336,9 @@ function Keybind:SetTheme(theme)
 	self.Button.BackgroundColor3 = theme.Background
 	self.Utility:ApplyStrokeTheme(self.Instance, theme.Stroke)
 	self:Refresh()
+	if self.Listening then
+		self.ButtonStroke.Color = theme.Accent
+	end
 	return self
 end
 
